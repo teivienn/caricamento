@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import type { FirebaseTargetConfig } from '../../../core/config/schema.js';
-import { UploadError, ValidationError } from '../../../core/errors.js';
+import { UploadError } from '../../../core/errors.js';
 import type { StepContext } from '../../../core/pipeline/types.js';
 import type { Publisher, PublishRequest, PublishResult } from '../../../core/ports/index.js';
+import { firebaseAppResource } from './app-resource.js';
 import type { TokenProvider } from './auth.js';
 
 const API_BASE = 'https://firebaseappdistribution.googleapis.com';
@@ -49,20 +50,7 @@ export class FirebasePublisher implements Publisher {
   }
 
   private appResource(): string {
-    const appId =
-      this.options.platform === 'android' ? this.options.config.appIdAndroid : this.options.config.appIdIos;
-    if (!appId) {
-      throw new ValidationError(`targets.firebase.appId${this.options.platform === 'android' ? 'Android' : 'Ios'} is not configured`, {
-        hint: 'Copy the app ID from the Firebase console into caricamento.config.ts.',
-      });
-    }
-    const projectNumber = appId.split(':')[1];
-    if (!projectNumber) {
-      throw new ValidationError(`Malformed Firebase app ID: ${appId}`, {
-        hint: 'Expected format "1:<projectNumber>:android:<hash>".',
-      });
-    }
-    return `projects/${projectNumber}/apps/${appId}`;
+    return firebaseAppResource(this.options.config, this.options.platform);
   }
 
   async publish(ctx: StepContext, request: PublishRequest): Promise<PublishResult> {

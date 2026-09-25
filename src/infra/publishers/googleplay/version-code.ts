@@ -14,6 +14,7 @@ export interface PlayVersionCodeProviderOptions {
  * when no track has any release yet.
  */
 export class PlayVersionCodeProvider implements VersionCodeProvider {
+  readonly name = 'play';
   private readonly client: PlayApiClient;
 
   constructor(private readonly options: PlayVersionCodeProviderOptions) {

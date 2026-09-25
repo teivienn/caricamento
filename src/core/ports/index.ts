@@ -103,6 +103,8 @@ export interface SigningProvider {
  * has no published releases yet.
  */
 export interface VersionCodeProvider {
+  /** Short source label for logs, e.g. 'play' | 'firebase'. */
+  readonly name: string;
   maxVersionCode(): Promise<number | null>;
 }
 

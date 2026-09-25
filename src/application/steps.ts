@@ -47,12 +47,12 @@ export function versionStep(config: CaricamentoConfig, overrides: VersionOverrid
       let maxVersionCode: number | null | undefined;
       if (config.version.strategy === 'auto-increment') {
         if (!versionCodeProvider) {
-          throw new ValidationError('version.strategy "auto-increment" requires the Google Play API', {
-            hint: 'Configure targets.play (serviceAccountRef + packageName) in caricamento.config.ts.',
+          throw new ValidationError('version.strategy "auto-increment" has no version source', {
+            hint: 'Configure targets.play or targets.firebase in caricamento.config.ts (see version.source).',
           });
         }
         maxVersionCode = await versionCodeProvider.maxVersionCode();
-        ctx.log('stdout', `Play max versionCode: ${maxVersionCode ?? '(no releases yet)'}`);
+        ctx.log('stdout', `Max published versionCode (${versionCodeProvider.name}): ${maxVersionCode ?? '(no releases yet)'}`);
       }
       const resolved = resolveAndroidVersion({
         config,

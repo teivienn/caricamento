@@ -49,6 +49,12 @@ const iosSchema = z.object({
 
 const versionSchema = z.object({
   strategy: z.enum(['manual', 'timestamp', 'auto-increment']).default('manual'),
+  /**
+   * Which API backs `auto-increment`: the current max versionCode is queried
+   * from Google Play (all tracks) or Firebase App Distribution (uploaded
+   * releases). Default: play when targets.play is configured, else firebase.
+   */
+  source: z.enum(['play', 'firebase']).optional(),
   /** Used by the manual strategy; can be overridden with --build. */
   buildNumber: z.number().int().positive().optional(),
   /** versionName / CFBundleShortVersionString; can be overridden with --version. */

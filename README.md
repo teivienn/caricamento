@@ -20,7 +20,7 @@ Distribution + Google Play. iOS заложена в архитектуру (см
 - Публикация в Google Play: AAB → трек (internal/alpha/beta/production) →
   mapping.txt для деобфускации — одной командой (чистый REST, без googleapis)
 - Стратегия версионирования `auto-increment`: versionCode = текущий максимум
-  в Play + 1
+  в Play или Firebase App Distribution + 1 (на выбор, `version.source`)
 - Автодетекция типа проекта, журнал всех запусков
 - Машиночитаемый вывод `--json` и `--dry-run` для CI
 
@@ -163,8 +163,8 @@ targets: {
   автоматически — краши в Play Console будут деобфусцированы.
 - **versionCode должен строго возрастать.** Стратегия
   `version: { strategy: 'auto-increment' }` запрашивает текущий максимум
-  через Play API и ставит +1 (для первого релиза — 1). Без `targets.play`
-  эта стратегия недоступна (будет ConfigError с подсказкой).
+  через Play API и ставит +1 (для первого релиза — 1). Источник можно
+  переопределить через `version.source` — см. «Версионирование» ниже.
 - При сбое после открытия edit-сессии (например, ошибка валидации на commit)
   edit удаляется автоматически — «висючих» черновиков в Play Console не
   остаётся.
@@ -199,6 +199,7 @@ export default {
   },
 
   version: { strategy: 'timestamp' }, // manual | timestamp | auto-increment
+                                      // (+ source: 'play' | 'firebase')
 
   targets: {
     firebase: {
@@ -216,8 +217,21 @@ export default {
 };
 ```
 
-`auto-increment` требует `targets.play`: versionCode вычисляется как
-текущий максимум в Play Console + 1.
+### Версионирование
+
+| Стратегия | versionCode | Источник |
+|---|---|---|
+| `manual` | `version.buildNumber` или флаг `--build <n>` | — |
+| `timestamp` | Unix-секунды | — |
+| `auto-increment` | текущий максимум + 1 | Play API или Firebase |
+
+Для `auto-increment` источник выбирается так: явный `version.source`
+(`'play'` / `'firebase'`), иначе Play если настроен `targets.play`, иначе
+Firebase. Play — источник истины (все треки); Firebase видит только сборки,
+загруженные в App Distribution (max `buildVersion` среди релизов).
+
+`versionName` всегда вручную: `version.name` в конфиге или `--version 1.0.4`.
+Флаги CLI перекрывают конфиг.
 
 ### Секреты
 
@@ -364,7 +378,7 @@ caricamento release --platform android --targets firebase --json
 | Play `401/403` | Service account не приглашён в Play Console (Users and permissions) или без прав на релизы |
 | Play `404` | `targets.play.packageName` не совпадает с существующим приложением в Play Console |
 | Play commit: `Version code ... has already been used` | versionCode не возрастает — используйте `version.strategy: 'auto-increment'` |
-| `auto-increment requires targets.play` | Стратегия опрашивает Play API — настройте `targets.play` или смените стратегию |
+| `auto-increment has no version source` | Настройте `targets.play` или `targets.firebase`, либо смените стратегию/источник (`version.source`) |
 | `Signer certificate SHA-256` не совпадает | Подписали не тем keystore — сверьте `expectedCertificateSha256` |
 | Play: `Target SDK of artifact is too low: N` | N — это versionCode артефакта, а не SDK. С 31.08.2026 обновления обязаны таргетить API 36 — поднимите `targetSdkVersion` |
 | Play: `APK ... not allowed` / просит AAB | Play принимает только AAB — `release` сам переключает apk→aab, для `upload` передайте `--artifact-type aab` |

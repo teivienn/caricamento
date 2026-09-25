@@ -11,6 +11,7 @@ import type { Publisher, VersionCodeProvider } from './core/ports/index.js';
 import { GradleBuilder } from './infra/builders/gradle.js';
 import { createGoogleTokenProvider, type TokenProvider } from './infra/publishers/firebase/auth.js';
 import { FirebasePublisher } from './infra/publishers/firebase/publisher.js';
+import { FirebaseVersionCodeProvider } from './infra/publishers/firebase/version-code.js';
 import { PlayPublisher } from './infra/publishers/googleplay/publisher.js';
 import { PlayVersionCodeProvider } from './infra/publishers/googleplay/version-code.js';
 import { AndroidSigningProvider } from './infra/signing/android.js';
@@ -62,10 +63,12 @@ export async function createContainer(options: ContainerOptions): Promise<Contai
   const signing = config.android?.signing ? new AndroidSigningProvider(processes, config) : null;
 
   const publishers: Record<string, Publisher> = {};
+
+  let firebaseTokenProvider: TokenProvider | undefined;
   if (config.targets.firebase) {
     const firebaseConfig = config.targets.firebase;
     let lazyProvider: TokenProvider | null = null;
-    const tokenProvider: TokenProvider = async () => {
+    firebaseTokenProvider = async () => {
       if (!lazyProvider) {
         const credential = firebaseConfig.serviceAccountRef
           ? await secrets.resolve(firebaseConfig.serviceAccountRef)
@@ -74,14 +77,14 @@ export async function createContainer(options: ContainerOptions): Promise<Contai
       }
       return lazyProvider();
     };
-    publishers.firebase = new FirebasePublisher({ config: firebaseConfig, platform: 'android', tokenProvider });
+    publishers.firebase = new FirebasePublisher({ config: firebaseConfig, platform: 'android', tokenProvider: firebaseTokenProvider });
   }
 
-  let versionCodeProvider: VersionCodeProvider | undefined;
+  let playTokenProvider: TokenProvider | undefined;
   if (config.targets.play) {
     const playConfig = config.targets.play;
     let lazyProvider: TokenProvider | null = null;
-    const tokenProvider: TokenProvider = async () => {
+    playTokenProvider = async () => {
       if (!lazyProvider) {
         const credential = await secrets.resolve(playConfig.serviceAccountRef);
         lazyProvider = createGoogleTokenProvider(credential, {
@@ -91,14 +94,33 @@ export async function createContainer(options: ContainerOptions): Promise<Contai
       }
       return lazyProvider();
     };
-    publishers.play = new PlayPublisher({ config: playConfig, tokenProvider });
-    versionCodeProvider = new PlayVersionCodeProvider({ packageName: playConfig.packageName, tokenProvider });
+    publishers.play = new PlayPublisher({ config: playConfig, tokenProvider: playTokenProvider });
   }
 
-  if (config.version.strategy === 'auto-increment' && !versionCodeProvider) {
-    throw new ConfigError('version.strategy "auto-increment" requires targets.play', {
-      hint: 'auto-increment queries the current max versionCode via the Google Play API — configure targets.play (serviceAccountRef + packageName) or pick another strategy.',
-    });
+  // auto-increment source: explicit version.source, else play when configured,
+  // else firebase (SPEC §8).
+  let versionCodeProvider: VersionCodeProvider | undefined;
+  if (config.version.strategy === 'auto-increment') {
+    const source = config.version.source ?? (config.targets.play ? 'play' : 'firebase');
+    if (source === 'play') {
+      if (!config.targets.play || !playTokenProvider) {
+        throw new ConfigError('version.source is "play" but targets.play is not configured', {
+          hint: 'Configure targets.play (serviceAccountRef + packageName) or set version.source to "firebase".',
+        });
+      }
+      versionCodeProvider = new PlayVersionCodeProvider({ packageName: config.targets.play.packageName, tokenProvider: playTokenProvider });
+    } else {
+      if (!config.targets.firebase || !firebaseTokenProvider) {
+        throw new ConfigError('version.source is "firebase" but targets.firebase is not configured', {
+          hint: 'Configure targets.firebase (appIdAndroid + credentials) or set version.source to "play".',
+        });
+      }
+      versionCodeProvider = new FirebaseVersionCodeProvider({
+        config: config.targets.firebase,
+        platform: 'android',
+        tokenProvider: firebaseTokenProvider,
+      });
+    }
   }
 
   return {
