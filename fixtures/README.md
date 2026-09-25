@@ -83,9 +83,10 @@ export ANDROID_KEYSTORE_PASSWORD=android ANDROID_KEY_PASSWORD=android
 caricamento release --platform android --targets firebase
 ```
 
-## flutter/ and react-native/
+## flutter/
 
-These are **marker fixtures only** — `pubspec.yaml` / `package.json` plus
-`ios/` and `android/` directories, just enough for `ProjectDetector` unit tests
-(SPEC.md §4). They are not runnable apps; the runnable RN fixtures above are
-too heavy for unit tests (they require `npm install` first).
+A **marker fixture only** — `pubspec.yaml` plus `ios/` and `android/`
+directories, just enough for `ProjectDetector` unit tests (SPEC.md §4). Not a
+runnable app. (React Native detection is tested against the real
+`react-native-cli` / `react-native-expo` fixtures above — detection only
+checks file existence, so no `npm install` is needed.)

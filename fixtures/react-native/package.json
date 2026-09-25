@@ -1,9 +1,0 @@
-{
-  "name": "caricamento-rn-fixture",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Minimal marker fixture for ProjectDetector tests. Not a runnable React Native app.",
-  "dependencies": {
-    "react-native": "*"
-  }
-}

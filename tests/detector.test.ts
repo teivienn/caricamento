@@ -15,10 +15,14 @@ describe('ProjectDetector (SPEC §4)', () => {
   });
 
   it('detects React Native via package.json + android/build.gradle', () => {
-    const result = detector.detect(`${fixtures}/react-native`);
-    expect(result).not.toBeNull();
-    expect(result?.type).toBe('react-native');
-    expect(result?.platforms).toContain('android');
+    // the real RN CLI fixture doubles as the detection fixture —
+    // detection only checks file existence, node_modules is not needed
+    for (const dir of ['react-native-cli', 'react-native-expo']) {
+      const result = detector.detect(`${fixtures}/${dir}`);
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe('react-native');
+      expect(result?.platforms).toContain('android');
+    }
   });
 
   it('detects native Android via settings.gradle', () => {
