@@ -14,10 +14,10 @@ export function detectCommand(globals: () => GlobalOptions): Command {
       const target = await resolveTarget(project, opts.config, new JsonProjectRegistry());
       let container;
       try {
-        container = await createContainer({ cwd: target.cwd, configPath: target.configPath });
+        container = await createContainer({ cwd: target.cwd, configPath: target.configPath, envFiles: target.envFiles });
       } catch (err) {
         if (!(err instanceof ConfigError)) throw err;
-        container = createBareContainer({ cwd: target.cwd });
+        container = createBareContainer({ cwd: target.cwd, envFiles: target.envFiles });
       }
       const descriptor = container.detect.execute({ cwd: target.cwd, config: container.config });
       if (opts.json) {

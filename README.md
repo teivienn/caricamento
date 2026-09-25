@@ -119,12 +119,25 @@ export default {
 ### Секреты
 
 В конфиге — только ссылки `secret:<name>`, никогда сами значения.
-Резолв по цепочке: **env vars → macOS Keychain → `.env`** (в каталоге
-проекта). Имя `android/keystore-password` маппится на env var
+Резолв по цепочке: **env vars → macOS Keychain →
+`~/.caricamento/projects/<name>.env` → `.env` в проекте**.
+Имя `android/keystore-password` маппится на env var
 `ANDROID_KEYSTORE_PASSWORD` (слеши и дефисы → подчёркивания, upper case).
 
-Для локальной разработки проще всего `.env` рядом с конфигом
-(добавьте его в `.gitignore`):
+**Keychain (рекомендуется локально)** — один раз кладёте, работает из любой
+директории, видно в Keychain Access.app (поиск «caricamento»):
+
+```bash
+caricamento secrets set android/keystore-path      # скрытый ввод
+caricamento secrets set android/keystore-password
+caricamento secrets set android/key-password
+caricamento secrets set firebase/service-account   # путь к JSON-ключу + serviceAccountRef в конфиге
+caricamento secrets list                           # только имена
+caricamento secrets delete <name>
+```
+
+**`.env`** — рядом с конфигом: для реестра это `~/.caricamento/projects/<name>.env`,
+для in-project режима — `.env` в корне проекта (держите его в `.gitignore`):
 
 ```bash
 ANDROID_KEYSTORE_PATH=/abs/path/to/upload.keystore
@@ -205,6 +218,7 @@ caricamento projects list
 ```
 caricamento init                          # шаблон caricamento.config.ts (in-project режим)
 caricamento projects add|list|remove      # реестр проектов (command center)
+caricamento secrets set|get|delete|list   # секреты в macOS Keychain
 caricamento doctor [project]              # проверка окружения и кредов
 caricamento detect [project]              # показать дескриптор проекта
 

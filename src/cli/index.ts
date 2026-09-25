@@ -7,6 +7,7 @@ import { doctorCommand } from './commands/doctor.js';
 import { initCommand } from './commands/init.js';
 import { projectsCommand } from './commands/projects.js';
 import { releaseCommand } from './commands/release.js';
+import { secretsCommand } from './commands/secrets.js';
 import { runsCommand, statusCommand } from './commands/status.js';
 import { uploadCommand } from './commands/upload.js';
 import type { GlobalOptions } from './options.js';
@@ -29,6 +30,7 @@ const globals = (): GlobalOptions => {
 
 program.addCommand(initCommand());
 program.addCommand(projectsCommand(globals));
+program.addCommand(secretsCommand(globals));
 program.addCommand(doctorCommand(globals));
 program.addCommand(detectCommand(globals));
 program.addCommand(buildCommand(globals));

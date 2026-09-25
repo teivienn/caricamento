@@ -87,6 +87,7 @@ describe('resolveTarget', () => {
     const target = await resolveTarget('myapp', undefined, registry);
     expect(target.cwd).toBe(projectDir);
     expect(target.configPath).toBe(registry.configPathFor('myapp'));
+    expect(target.envFiles).toEqual([registry.envPathFor('myapp')]);
   });
 
   it('falls back to the project-local config when no registry config exists', async () => {

@@ -33,23 +33,35 @@ describe('secret resolution chain (SPEC §3.5)', () => {
 
   it('resolves from .env files', async () => {
     await writeFile(join(dir, '.env'), '# comment\nANDROID_KEY_PASSWORD="from-dotenv"\nEMPTY=\n');
-    const dotenv = new DotenvSecretStore(dir);
+    const dotenv = new DotenvSecretStore([join(dir, '.env')]);
     await expect(dotenv.get('android/key-password')).resolves.toBe('from-dotenv');
     await expect(dotenv.get('empty')).resolves.toBeNull();
+  });
+
+  it('consults multiple .env files in order, first match wins', async () => {
+    await writeFile(join(dir, 'registry.env'), 'ANDROID_KEY_PASSWORD=from-registry\nREGISTRY_ONLY=1\n');
+    await writeFile(join(dir, 'project.env'), 'ANDROID_KEY_PASSWORD=from-project\nPROJECT_ONLY=2\n');
+    const dotenv = new DotenvSecretStore([
+      join(dir, 'missing.env'), // skipped
+      join(dir, 'registry.env'),
+      join(dir, 'project.env'),
+    ]);
+    await expect(dotenv.get('android/key-password')).resolves.toBe('from-registry');
+    await expect(dotenv.get('project/only')).resolves.toBe('2');
   });
 
   it('prefers env vars over .env (chain order)', async () => {
     await writeFile(join(dir, '.env'), 'ANDROID_KEY_PASSWORD=from-dotenv\n');
     const resolver = new ChainedSecretResolver([
       new EnvSecretStore({ ANDROID_KEY_PASSWORD: 'from-env' }),
-      new DotenvSecretStore(dir),
+      new DotenvSecretStore([join(dir, '.env')]),
     ]);
     await expect(resolver.resolve('secret:android/key-password')).resolves.toBe('from-env');
   });
 
   it('falls through the chain until a store resolves', async () => {
     await writeFile(join(dir, '.env'), 'ANDROID_KEY_PASSWORD=from-dotenv\n');
-    const resolver = new ChainedSecretResolver([new EnvSecretStore({}), new DotenvSecretStore(dir)]);
+    const resolver = new ChainedSecretResolver([new EnvSecretStore({}), new DotenvSecretStore([join(dir, '.env')])]);
     await expect(resolver.resolve('secret:android/key-password')).resolves.toBe('from-dotenv');
   });
 

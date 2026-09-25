@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { BuildUseCase } from './application/build.js';
 import { DetectUseCase } from './application/detect.js';
 import { DoctorUseCase } from './application/doctor.js';
@@ -21,6 +22,8 @@ import { ChainedSecretResolver } from './infra/system/secrets.js';
 export interface ContainerOptions {
   cwd: string;
   configPath?: string;
+  /** Extra .env files consulted before <cwd>/.env (SPEC §3.5, registry mode). */
+  envFiles?: string[];
 }
 
 /** Composition root (SPEC §3.1): plain factory object, no DI framework. */
@@ -41,11 +44,11 @@ export interface Container {
 export async function createContainer(options: ContainerOptions): Promise<Container> {
   const { cwd } = options;
   const processes = new NodeProcessRunner();
-  // SPEC §3.5 chain: env vars -> macOS Keychain -> .env
+  // SPEC §3.5 chain: env vars -> macOS Keychain -> registry .env -> project .env
   const secrets = new ChainedSecretResolver([
     new EnvSecretStore(),
     new KeychainSecretStore(processes),
-    new DotenvSecretStore(cwd),
+    new DotenvSecretStore([...(options.envFiles ?? []), join(cwd, '.env')]),
   ]);
   const runs = new RunStore();
 
@@ -93,7 +96,7 @@ export function createBareContainer(options: ContainerOptions): Omit<Container, 
   const secrets = new ChainedSecretResolver([
     new EnvSecretStore(),
     new KeychainSecretStore(processes),
-    new DotenvSecretStore(cwd),
+    new DotenvSecretStore([...(options.envFiles ?? []), join(cwd, '.env')]),
   ]);
   const runs = new RunStore();
   return {

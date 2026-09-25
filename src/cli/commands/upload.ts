@@ -23,7 +23,7 @@ export function uploadCommand(globals: () => GlobalOptions): Command {
         });
       }
       const target = await resolveTarget(project, global.config, new JsonProjectRegistry());
-      const container = await createContainer({ cwd: target.cwd, configPath: target.configPath });
+      const container = await createContainer({ cwd: target.cwd, configPath: target.configPath, envFiles: target.envFiles });
       const summary = await renderEvents(
         container.upload.run({
           cwd: target.cwd,

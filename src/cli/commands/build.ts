@@ -22,7 +22,7 @@ export function buildCommand(globals: () => GlobalOptions): Command {
         });
       }
       const target = await resolveTarget(project, global.config, new JsonProjectRegistry());
-      const container = await createContainer({ cwd: target.cwd, configPath: target.configPath });
+      const container = await createContainer({ cwd: target.cwd, configPath: target.configPath, envFiles: target.envFiles });
       const summary = await renderEvents(
         container.build.run({
           cwd: target.cwd,

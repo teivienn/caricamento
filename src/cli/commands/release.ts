@@ -36,7 +36,7 @@ export function releaseCommand(globals: () => GlobalOptions): Command {
           });
         }
         const target = await resolveTarget(project, global.config, new JsonProjectRegistry());
-        const container = await createContainer({ cwd: target.cwd, configPath: target.configPath });
+        const container = await createContainer({ cwd: target.cwd, configPath: target.configPath, envFiles: target.envFiles });
 
         const targets = opts.targets
           ? opts.targets.split(',').map((t) => t.trim())

@@ -8,6 +8,8 @@ export interface ResolvedTarget {
   /** Explicit config path; undefined lets the loader fall back to <cwd>/caricamento.config.ts. */
   configPath?: string;
   projectName?: string;
+  /** Extra .env files consulted before <cwd>/.env (registry mode: the per-project env file). */
+  envFiles: string[];
 }
 
 /**
@@ -23,7 +25,7 @@ export async function resolveTarget(
   registry: JsonProjectRegistry,
 ): Promise<ResolvedTarget> {
   if (!projectName) {
-    return { cwd: process.cwd(), configPath: explicitConfig };
+    return { cwd: process.cwd(), configPath: explicitConfig, envFiles: [] };
   }
 
   const entry = await registry.get(projectName);
@@ -43,5 +45,5 @@ export async function resolveTarget(
 
   const registryConfig = registry.configPathFor(projectName);
   const configPath = explicitConfig ?? entry.config ?? (existsSync(registryConfig) ? registryConfig : undefined);
-  return { cwd: entry.path, configPath, projectName };
+  return { cwd: entry.path, configPath, projectName, envFiles: [registry.envPathFor(projectName)] };
 }

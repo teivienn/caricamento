@@ -23,6 +23,11 @@ export class JsonProjectRegistry implements ProjectRegistry {
     return join(this.baseDir, 'projects', `${name}.config.ts`);
   }
 
+  /** Per-project .env next to the registry config (SPEC §3.5). */
+  envPathFor(name: string): string {
+    return join(this.baseDir, 'projects', `${name}.env`);
+  }
+
   async list(): Promise<RegisteredProject[]> {
     const data = await this.read();
     return Object.values(data).sort((a, b) => a.name.localeCompare(b.name));

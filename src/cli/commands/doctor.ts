@@ -16,11 +16,11 @@ export function doctorCommand(globals: () => GlobalOptions): Command {
       let container;
       let config;
       try {
-        container = await createContainer({ cwd: target.cwd, configPath: target.configPath });
+        container = await createContainer({ cwd: target.cwd, configPath: target.configPath, envFiles: target.envFiles });
         config = container.config;
       } catch (err) {
         if (!(err instanceof ConfigError)) throw err;
-        container = createBareContainer({ cwd: target.cwd });
+        container = createBareContainer({ cwd: target.cwd, envFiles: target.envFiles });
         config = undefined;
       }
       const checks: DoctorCheck[] = await container.doctor.execute({ cwd: target.cwd, config });
