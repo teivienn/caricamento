@@ -70,6 +70,8 @@ export interface ProjectRegistry {
 
 export interface PublishRequest {
   artifact: Artifact;
+  /** All artifacts produced by the build (e.g. mapping.txt alongside the binary). */
+  artifacts?: Artifact[];
   releaseNotes?: string;
   versionName?: string;
   versionCode?: number;
@@ -93,6 +95,15 @@ export interface SigningVerification {
 
 export interface SigningProvider {
   verify(ctx: StepContext, artifact: Artifact): Promise<SigningVerification>;
+}
+
+/**
+ * Source of the highest published Android versionCode, backing the
+ * `auto-increment` version strategy (SPEC §8). Returns null when the app
+ * has no published releases yet.
+ */
+export interface VersionCodeProvider {
+  maxVersionCode(): Promise<number | null>;
 }
 
 export interface RunRecordEntry {

@@ -57,6 +57,37 @@ describe('config schema', () => {
   it('rejects unknown version strategies', () => {
     expect(() => defineConfig({ version: { strategy: 'random' } })).toThrow();
   });
+
+  it('parses a play target with defaults', () => {
+    const config = defineConfig({
+      targets: {
+        play: {
+          serviceAccountRef: 'secret:play/service-account',
+          packageName: 'com.example.app',
+        },
+      },
+    });
+    expect(config.targets.play?.track).toBe('internal');
+    expect(config.targets.play?.status).toBe('completed');
+  });
+
+  it('rejects a play target without packageName or with a raw secret', () => {
+    expect(() =>
+      defineConfig({ targets: { play: { serviceAccountRef: 'secret:play/service-account' } } }),
+    ).toThrow();
+    expect(() =>
+      defineConfig({
+        targets: { play: { serviceAccountRef: '/path/to/sa.json', packageName: 'com.example.app' } },
+      }),
+    ).toThrow();
+    expect(() =>
+      defineConfig({
+        targets: {
+          play: { serviceAccountRef: 'secret:play/service-account', packageName: 'com.example.app', track: 'nope' },
+        },
+      }),
+    ).toThrow();
+  });
 });
 
 describe('config loading', () => {

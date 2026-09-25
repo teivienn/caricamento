@@ -4,7 +4,7 @@ import type { Artifact } from '../core/artifact/types.js';
 import type { CaricamentoConfig, Platform } from '../core/config/schema.js';
 import { ValidationError } from '../core/errors.js';
 import type { Step } from '../core/pipeline/types.js';
-import type { Builder, Publisher, SigningProvider } from '../core/ports/index.js';
+import type { Builder, Publisher, SigningProvider, VersionCodeProvider } from '../core/ports/index.js';
 import { ProjectDetector } from '../core/project/detector.js';
 import { resolveAndroidVersion } from '../core/versioning/index.js';
 
@@ -39,15 +39,26 @@ export function detectStep(config: CaricamentoConfig, platform: Platform): Step 
   };
 }
 
-export function versionStep(config: CaricamentoConfig, overrides: VersionOverrides): Step {
+export function versionStep(config: CaricamentoConfig, overrides: VersionOverrides, versionCodeProvider?: VersionCodeProvider): Step {
   return {
     id: 'version',
     title: 'Resolve version',
     run: async (ctx) => {
+      let maxVersionCode: number | null | undefined;
+      if (config.version.strategy === 'auto-increment') {
+        if (!versionCodeProvider) {
+          throw new ValidationError('version.strategy "auto-increment" requires the Google Play API', {
+            hint: 'Configure targets.play (serviceAccountRef + packageName) in caricamento.config.ts.',
+          });
+        }
+        maxVersionCode = await versionCodeProvider.maxVersionCode();
+        ctx.log('stdout', `Play max versionCode: ${maxVersionCode ?? '(no releases yet)'}`);
+      }
       const resolved = resolveAndroidVersion({
         config,
         buildNumberOverride: overrides.buildNumber,
         versionNameOverride: overrides.versionName,
+        maxVersionCode,
       });
       ctx.log(
         'stdout',
@@ -66,11 +77,14 @@ export function androidProjectRoot(cwd: string, projectType: unknown): string {
   return projectType === 'react-native' || projectType === 'flutter' ? join(cwd, 'android') : cwd;
 }
 
-export function androidBuildStep(builder: Builder, artifactType: 'aab' | 'apk'): Step {
+export function androidBuildStep(builder: Builder, artifactType: 'aab' | 'apk', switchedFrom?: 'aab' | 'apk'): Step {
   return {
     id: 'build:android',
     title: `Build Android ${artifactType.toUpperCase()}`,
     run: async (ctx) => {
+      if (switchedFrom && switchedFrom !== artifactType) {
+        ctx.log('stdout', `Artifact type switched ${switchedFrom} → ${artifactType}: Google Play requires AAB`);
+      }
       const artifacts = await builder.build(ctx, {
         platform: 'android',
         artifactType,
@@ -120,6 +134,7 @@ export function publishStep(publisher: Publisher, releaseNotes?: string): Step {
       }
       const result = await publisher.publish(ctx, {
         artifact: binary,
+        artifacts,
         releaseNotes,
         versionCode: ctx.data.get('versionCode') as number | undefined,
         versionName: ctx.data.get('versionName') as string | undefined,

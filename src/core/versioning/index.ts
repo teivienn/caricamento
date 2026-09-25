@@ -12,13 +12,18 @@ export interface VersionStrategyContext {
   buildNumberOverride?: number;
   versionNameOverride?: string;
   now?: Date;
+  /**
+   * Highest published versionCode, resolved beforehand via a
+   * VersionCodeProvider (Play API). Required for `auto-increment`;
+   * null means the app has no published releases yet.
+   */
+  maxVersionCode?: number | null;
 }
 
 /**
- * Android versionCode strategies (SPEC §8).
- * `auto-increment` needs the Play API (max versionCode + 1) which is out of
- * scope for this milestone — the strategy is wired behind the interface and
- * throws a typed error with a clear TODO until Phase 4 lands.
+ * Android versionCode strategies (SPEC §8). Pure and synchronous: for
+ * `auto-increment` the caller resolves the current maximum via the Play API
+ * (VersionCodeProvider) and passes it in as `maxVersionCode`.
  */
 export function resolveAndroidVersion(ctx: VersionStrategyContext): ResolvedVersion {
   const strategy = ctx.config.version.strategy;
@@ -39,10 +44,12 @@ export function resolveAndroidVersion(ctx: VersionStrategyContext): ResolvedVers
       return { versionCode: Math.floor(now.getTime() / 1000), versionName };
     }
     case 'auto-increment': {
-      // TODO(phase-4): query max(versionCode) via Play Developer API edits.tracks.get and add 1.
-      throw new ValidationError('version.strategy "auto-increment" is not available yet', {
-        hint: 'It requires the Google Play API (Phase 4). Use "manual" or "timestamp" for now.',
-      });
+      if (ctx.maxVersionCode === undefined) {
+        throw new ValidationError('version.strategy "auto-increment" requires the Google Play API', {
+          hint: 'Configure targets.play (serviceAccountRef + packageName) so the current max versionCode can be queried.',
+        });
+      }
+      return { versionCode: (ctx.maxVersionCode ?? 0) + 1, versionName };
     }
   }
 }

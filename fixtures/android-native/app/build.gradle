@@ -12,12 +12,12 @@ def versionNameProp = project.findProperty('CARICAMENTO_VERSION_NAME')
 
 android {
     namespace 'com.example.caricamentofixture'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'com.caricamento.fixture'
         minSdk 24
-        targetSdk 35
+        targetSdk 36
         versionCode(versionCodeProp != null ? versionCodeProp.toInteger() : 1)
         versionName(versionNameProp != null ? versionNameProp.toString() : '1.0.0')
     }

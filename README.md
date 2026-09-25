@@ -4,8 +4,8 @@ CLI для сборки, подписи и доставки мобильных �
 от исходников до установленной сборки у тестировщиков.
 
 **Статус: MVP** — Android (нативный, React Native CLI, Expo) + Firebase App
-Distribution. iOS и Google Play заложены в архитектуру (см. [SPEC.md](SPEC.md)),
-но пока не реализованы.
+Distribution + Google Play. iOS заложена в архитектуру (см. [SPEC.md](SPEC.md)),
+но пока не реализована.
 
 ## Возможности
 
@@ -13,10 +13,15 @@ Distribution. iOS и Google Play заложены в архитектуру (с�
 - **Zero-touch подпись**: релиз подписывается вашим keystore через
   сгенерированный Gradle init script — файлы проекта не модифицируются и
   переживают `expo prebuild --clean`
-- Проверка подписи после сборки (`apksigner verify` + сверка SHA-256 отпечатка)
+- Проверка подписи после сборки (APK — `apksigner verify`, AAB — `jarsigner`/`keytool`;
+  в обоих случаях сверка SHA-256 отпечатка)
 - Выгрузка в Firebase App Distribution: upload → release notes → рассылка
   группам тестеров (чистый REST, без firebase-tools)
-- Автодетекция типа проекта, стратегии версионирования, журнал всех запусков
+- Публикация в Google Play: AAB → трек (internal/alpha/beta/production) →
+  mapping.txt для деобфускации — одной командой (чистый REST, без googleapis)
+- Стратегия версионирования `auto-increment`: versionCode = текущий максимум
+  в Play + 1
+- Автодетекция типа проекта, журнал всех запусков
 - Машиночитаемый вывод `--json` и `--dry-run` для CI
 
 ## Требования
@@ -78,6 +83,98 @@ caricamento release --platform android --targets firebase
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/firebase-sa.json
 ```
 
+## Настройка Google Play
+
+Публикация в Play Console работает через Play Developer API v3 (транзакционный
+«edit»: upload AAB → трек → commit). Разовая настройка (~10 минут, нужен
+аккаунт разработчика Google Play, $25):
+
+**Шаг 1. Проект в Google Cloud.** Откройте
+[console.cloud.google.com](https://console.cloud.google.com) → в верхней
+панели кликните на селектор проектов (слева от поиска) → **New Project** →
+имя (например, `caricamento-play`) → **Create**. Можно использовать и
+существующий проект (в т.ч. тот, что Firebase создал автоматически).
+
+**Шаг 2. Включите Google Play Android Developer API.**
+Проще всего по прямой ссылке:
+[console.cloud.google.com/apis/library/playdeveloper.googleapis.com](https://console.cloud.google.com/apis/library/playdeveloper.googleapis.com)
+→ убедитесь, что в селекторе сверху выбран нужный проект → кнопка **Enable**.
+Вручную то же самое: меню ☰ → **APIs & Services** → **Library** → в поиске
+`Google Play Android Developer API` → открыть → **Enable**.
+
+**Шаг 3. Создайте service account.** Прямая ссылка:
+[console.cloud.google.com/iam-admin/serviceaccounts](https://console.cloud.google.com/iam-admin/serviceaccounts)
+→ **Create Service Account** → имя `play-publisher` → **Create and Continue** →
+шаг «Grant this service account access to project» **пропустите** (роль в
+Google Cloud не нужна — доступ выдаётся в Play Console) → **Done**.
+
+**Шаг 4. Скачайте JSON-ключ.** В списке service accounts кликните на email
+созданного (`play-publisher@...iam.gserviceaccount.com`) → вкладка **Keys** →
+**Add Key** → **Create new key** → **JSON** → **Create** — файл
+`project-....json` скачается автоматически. Это единственная копия ключа,
+перевыпустить можно только новый.
+
+**Шаг 5. Пригласите service account в Play Console.**
+Страница «Setup → API access» **упразднена** — теперь сервисный аккаунт
+приглашается как обычный пользователь. Откройте
+[play.google.com/console](https://play.google.com/console) → в левом меню
+**Users and permissions** → **Invite new users** → в поле email вставьте
+адрес сервисного аккаунта из шага 3
+(`play-publisher@<project>.iam.gserviceaccount.com`).
+
+**Шаг 6. Выдайте права** (там же, в форме приглашения). Вкладка
+**Account permissions** — минимум для публикации:
+
+- **View app information and download bulk reports (read-only)** — обязательно;
+- **Release apps to testing tracks** — для internal/alpha/beta;
+- **Release to production, exclude devices and use Play app signing** —
+  только если планируете продакшен через API (для тестовых треков не нужно).
+
+Либо на вкладке **App permissions** выдайте права только на конкретное
+приложение. Затем **Invite user** — для сервисных аккаунтов подтверждение
+не требуется, статус сразу становится Active.
+
+**Шаг 7. Сохраните ключ в Keychain**:
+
+```bash
+caricamento secrets set play/service-account   # вставьте ПУТЬ к скачанному JSON
+```
+
+Конфигурация таргета:
+
+```typescript
+targets: {
+  play: {
+    serviceAccountRef: 'secret:play/service-account',
+    packageName: 'com.example.app',   // applicationId приложения
+    track: 'internal',                // internal | alpha | beta | production (по умолчанию internal)
+    status: 'completed',              // completed | draft (по умолчанию completed)
+    releaseNotes: 'Что нового',       // опционально; перекрывается флагом --release-notes
+  },
+},
+```
+
+Особенности:
+
+- **Только AAB.** Play не принимает APK — когда `play` есть среди таргетов,
+  `release` автоматически переключает сборку на AAB (Firebase принимает AAB
+  тоже, поэтому комбинированный запуск `--targets firebase,play` корректен).
+- **mapping.txt** (R8/ProGuard), если он собрался вместе с AAB, выгружается
+  автоматически — краши в Play Console будут деобфусцированы.
+- **versionCode должен строго возрастать.** Стратегия
+  `version: { strategy: 'auto-increment' }` запрашивает текущий максимум
+  через Play API и ставит +1 (для первого релиза — 1). Без `targets.play`
+  эта стратегия недоступна (будет ConfigError с подсказкой).
+- При сбое после открытия edit-сессии (например, ошибка валидации на commit)
+  edit удаляется автоматически — «висючих» черновиков в Play Console не
+  остаётся.
+
+**Важные ограничения API:**
+- Приложение должно **уже существовать** в Play Console — первое создание
+  приложения делается только руками через веб-интерфейс.
+- Первый релиз на production-трек тоже обычно делается вручную; API удобен
+  для internal/alpha/beta.
+
 ## Конфигурация
 
 `caricamento.config.ts` в корне проекта (создаётся через `caricamento init`):
@@ -101,7 +198,7 @@ export default {
     },
   },
 
-  version: { strategy: 'timestamp' }, // manual | timestamp | auto-increment*
+  version: { strategy: 'timestamp' }, // manual | timestamp | auto-increment
 
   targets: {
     firebase: {
@@ -110,11 +207,17 @@ export default {
       testers: ['dev@example.com'],  // опционально, email'ы напрямую
       releaseNotes: 'Что нового в этой сборке',
     },
+    play: {                          // см. «Настройка Google Play»
+      serviceAccountRef: 'secret:play/service-account',
+      packageName: 'com.example.app',
+      track: 'internal',
+    },
   },
 };
 ```
 
-\* `auto-increment` появится вместе с Google Play (Phase 4).
+`auto-increment` требует `targets.play`: versionCode вычисляется как
+текущий максимум в Play Console + 1.
 
 ### Секреты
 
@@ -224,8 +327,8 @@ caricamento detect [project]              # показать дескрипто�
 
 caricamento build   [project] [--platform android] [--artifact-type apk|aab]
                     [--build <n>] [--version <name>]
-caricamento upload  [project] --target firebase [--artifact <path>] [--release-notes <text>]
-caricamento release [project] [--targets firebase] [...]
+caricamento upload  [project] --target firebase|play [--artifact <path>] [--release-notes <text>]
+caricamento release [project] [--targets firebase,play] [...]
 
 caricamento runs                          # история запусков
 caricamento status <runId>                # сводка по запуску
@@ -258,13 +361,19 @@ caricamento release --platform android --targets firebase --json
 | Firebase `HTTP 404` при upload | Неверный App ID, либо package name APK не совпадает с зарегистрированным в Firebase |
 | Firebase `404` при distribute | Нет такой группы — проверьте alias в App Distribution → Testers & Groups |
 | Firebase `401/403` | Service account без роли Firebase App Distribution Admin, либо не задан `GOOGLE_APPLICATION_CREDENTIALS` |
+| Play `401/403` | Service account не приглашён в Play Console (Users and permissions) или без прав на релизы |
+| Play `404` | `targets.play.packageName` не совпадает с существующим приложением в Play Console |
+| Play commit: `Version code ... has already been used` | versionCode не возрастает — используйте `version.strategy: 'auto-increment'` |
+| `auto-increment requires targets.play` | Стратегия опрашивает Play API — настройте `targets.play` или смените стратегию |
 | `Signer certificate SHA-256` не совпадает | Подписали не тем keystore — сверьте `expectedCertificateSha256` |
+| Play: `Target SDK of artifact is too low: N` | N — это versionCode артефакта, а не SDK. С 31.08.2026 обновления обязаны таргетить API 36 — поднимите `targetSdkVersion` |
+| Play: `APK ... not allowed` / просит AAB | Play принимает только AAB — `release` сам переключает apk→aab, для `upload` передайте `--artifact-type aab` |
 
 ## Разработка
 
 ```bash
 npm run build       # tsup → dist/
-npm test            # vitest, 42 теста (Android SDK / Firebase не нужны)
+npm test            # vitest, 77 тестов (Android SDK / Firebase / Play не нужны)
 npm run typecheck
 npm run lint        # eslint + правила границ слоёв (SPEC §3.1)
 ```
@@ -278,7 +387,8 @@ npm run lint        # eslint + правила границ слоёв (SPEC §3.
 
 - **Phase 3** — iOS: `xcodebuild`, подпись (automatic/manual), App Store
   Connect + TestFlight
-- **Phase 4** — Google Play: edits flow, треки, auto-increment versionCode
+- ~~**Phase 4** — Google Play~~ — ✅ реализовано: edits flow, треки,
+  auto-increment versionCode
 - **Phase 5** — идемпотентность, ретраи, manual signing для CI
 - **Phase 6** — локальный HTTP API + UI поверх того же core
 

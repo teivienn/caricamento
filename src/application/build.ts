@@ -1,7 +1,7 @@
 import type { CaricamentoConfig } from '../core/config/schema.js';
 import { Pipeline, type RunRecorder } from '../core/pipeline/pipeline.js';
 import type { RunEvent, Step, UseCase } from '../core/pipeline/types.js';
-import type { Builder, SigningProvider } from '../core/ports/index.js';
+import type { Builder, SigningProvider, VersionCodeProvider } from '../core/ports/index.js';
 import { androidBuildStep, detectStep, verifySigningStep, versionStep, type VersionOverrides } from './steps.js';
 
 export interface BuildInput extends VersionOverrides {
@@ -14,6 +14,7 @@ export interface BuildUseCaseDeps {
   config: CaricamentoConfig;
   builder: Builder;
   signing: SigningProvider | null;
+  versionCodeProvider?: VersionCodeProvider;
   recorder?: RunRecorder;
 }
 
@@ -23,7 +24,7 @@ export class BuildUseCase implements UseCase<BuildInput> {
   run(input: BuildInput): AsyncIterable<RunEvent> {
     const steps: Step[] = [
       detectStep(this.deps.config, 'android'),
-      versionStep(this.deps.config, input),
+      versionStep(this.deps.config, input, this.deps.versionCodeProvider),
       androidBuildStep(this.deps.builder, input.artifactType ?? 'apk'),
       verifySigningStep(this.deps.signing),
     ];

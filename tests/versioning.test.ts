@@ -29,9 +29,25 @@ describe('Android version strategies (SPEC §8)', () => {
     expect(resolved.versionCode).toBe(Math.floor(now.getTime() / 1000));
   });
 
-  it('auto-increment: stubbed with a clear TODO until the Play API lands', () => {
+  it('auto-increment: max versionCode + 1', () => {
+    const resolved = resolveAndroidVersion({
+      config: baseConfig({ strategy: 'auto-increment' }),
+      maxVersionCode: 41,
+    });
+    expect(resolved.versionCode).toBe(42);
+  });
+
+  it('auto-increment: starts at 1 when the app has no releases yet', () => {
+    const resolved = resolveAndroidVersion({
+      config: baseConfig({ strategy: 'auto-increment' }),
+      maxVersionCode: null,
+    });
+    expect(resolved.versionCode).toBe(1);
+  });
+
+  it('auto-increment: throws a typed error when no version code provider was consulted', () => {
     expect(() => resolveAndroidVersion({ config: baseConfig({ strategy: 'auto-increment' }) })).toThrow(
-      /not available yet/,
+      /requires the Google Play API/,
     );
   });
 });

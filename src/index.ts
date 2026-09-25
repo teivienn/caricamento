@@ -1,6 +1,6 @@
 export { defineConfig } from './core/config/defineConfig.js';
 export { configSchema } from './core/config/schema.js';
-export type { CaricamentoConfig, Platform, ProjectType } from './core/config/schema.js';
+export type { CaricamentoConfig, Platform, PlayTargetConfig, ProjectType } from './core/config/schema.js';
 export type { Artifact, ArtifactKind } from './core/artifact/types.js';
 export {
   CaricamentoError,
@@ -37,4 +37,5 @@ export type {
   SecretResolver,
   SecretStore,
   SigningProvider,
+  VersionCodeProvider,
 } from './core/ports/index.js';

@@ -2,7 +2,7 @@ import type { CaricamentoConfig } from '../core/config/schema.js';
 import { ValidationError } from '../core/errors.js';
 import { Pipeline, type RunRecorder } from '../core/pipeline/pipeline.js';
 import type { RunEvent, Step, UseCase } from '../core/pipeline/types.js';
-import type { Builder, Publisher, SigningProvider } from '../core/ports/index.js';
+import type { Builder, Publisher, SigningProvider, VersionCodeProvider } from '../core/ports/index.js';
 import {
   androidBuildStep,
   detectStep,
@@ -25,6 +25,8 @@ export interface ReleaseUseCaseDeps {
   builder: Builder;
   signing: SigningProvider | null;
   publishers: Record<string, Publisher>;
+  /** Backs the auto-increment version strategy (SPEC §8); wired from targets.play. */
+  versionCodeProvider?: VersionCodeProvider;
   recorder?: RunRecorder;
 }
 
@@ -32,10 +34,14 @@ export class ReleaseUseCase implements UseCase<ReleaseInput> {
   constructor(private readonly deps: ReleaseUseCaseDeps) {}
 
   run(input: ReleaseInput): AsyncIterable<RunEvent> {
+    // Play only accepts AAB; Firebase accepts both, so switching is safe for
+    // combined firebase+play runs.
+    const requestedType = input.artifactType ?? 'apk';
+    const artifactType = input.targets.includes('play') ? 'aab' : requestedType;
     const steps: Step[] = [
       detectStep(this.deps.config, 'android'),
-      versionStep(this.deps.config, input),
-      androidBuildStep(this.deps.builder, input.artifactType ?? 'apk'),
+      versionStep(this.deps.config, input, this.deps.versionCodeProvider),
+      androidBuildStep(this.deps.builder, artifactType, requestedType),
       verifySigningStep(this.deps.signing),
     ];
     for (const target of input.targets) {

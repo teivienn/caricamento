@@ -68,6 +68,20 @@ const firebaseTargetSchema = z.object({
   releaseNotes: z.string().optional(),
 });
 
+const playTargetSchema = z.object({
+  /**
+   * Secret ref resolving to a service-account JSON (inline JSON or a file path)
+   * with access to the Play Developer API (SPEC §7.2).
+   */
+  serviceAccountRef: secretRef,
+  /** applicationId of the app, as registered in Play Console. */
+  packageName: z.string().min(1),
+  track: z.enum(['internal', 'alpha', 'beta', 'production']).default('internal'),
+  releaseNotes: z.string().optional(),
+  /** Release status; 'draft' keeps the release unpublished on the track. */
+  status: z.enum(['completed', 'draft']).default('completed'),
+});
+
 export const configSchema = z.object({
   project: z.object({ type: projectTypeSchema.default('auto') }).default({ type: 'auto' }),
   android: androidSchema.optional(),
@@ -76,6 +90,7 @@ export const configSchema = z.object({
   targets: z
     .object({
       firebase: firebaseTargetSchema.optional(),
+      play: playTargetSchema.optional(),
     })
     .default({}),
 });
@@ -83,3 +98,4 @@ export const configSchema = z.object({
 export type CaricamentoConfig = z.infer<typeof configSchema>;
 export type AndroidSigningConfig = z.infer<typeof androidSigningSchema>;
 export type FirebaseTargetConfig = z.infer<typeof firebaseTargetSchema>;
+export type PlayTargetConfig = z.infer<typeof playTargetSchema>;
