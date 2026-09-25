@@ -36,6 +36,12 @@ export interface BuildRequest {
   artifactType?: 'aab' | 'apk';
   versionCode?: number;
   versionName?: string;
+  /**
+   * Directory containing the native build entrypoint (gradlew for Android).
+   * Differs from the run cwd for React Native / Flutter projects, where the
+   * Android project lives in <root>/android (SPEC §5.3).
+   */
+  projectRoot?: string;
 }
 
 export interface Builder {

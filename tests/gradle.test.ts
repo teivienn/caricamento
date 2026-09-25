@@ -7,6 +7,7 @@ import { BuildError } from '../src/core/errors.js';
 import type { StepContext } from '../src/core/pipeline/types.js';
 import type { ProcessRunner, SecretResolver } from '../src/core/ports/index.js';
 import { GradleBuilder } from '../src/infra/builders/gradle.js';
+import { androidProjectRoot } from '../src/application/steps.js';
 
 const makeConfig = (android?: object): CaricamentoConfig => configSchema.parse({ android });
 
@@ -31,7 +32,8 @@ const makeContext = (cwd: string, dryRun = false): StepContext => ({
 describe('GradleBuilder', () => {
   let dir: string;
   let runner: ProcessRunner;
-  const runMock = vi.fn<(cmd: string, args: string[]) => Promise<{ exitCode: number; stdout: string; stderr: string }>>();
+  const runMock =
+    vi.fn<(cmd: string, args: string[], options?: { cwd?: string }) => Promise<{ exitCode: number; stdout: string; stderr: string }>>();
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'caricamento-gradle-'));
@@ -132,5 +134,34 @@ describe('GradleBuilder', () => {
     const artifacts = await builder.build(makeContext(dir, true), { platform: 'android', artifactType: 'apk' });
     expect(runMock).not.toHaveBeenCalled();
     expect(artifacts).toEqual([]);
+  });
+
+  it('runs gradlew in projectRoot and collects artifacts there (RN/Flutter layout)', async () => {
+    const rnAndroid = join(dir, 'android');
+    await mkdir(join(rnAndroid, 'app/build/outputs/apk/release'), { recursive: true });
+    await writeFile(join(rnAndroid, 'app/build/outputs/apk/release/app-release.apk'), 'fake-apk');
+
+    const builder = new GradleBuilder(runner, makeSecrets({}), makeConfig({ module: 'app', buildType: 'release' }));
+    const artifacts = await builder.build(makeContext(dir), {
+      platform: 'android',
+      artifactType: 'apk',
+      projectRoot: rnAndroid,
+    });
+
+    expect(runMock).toHaveBeenCalledOnce();
+    expect(runMock.mock.calls[0]?.[2]).toMatchObject({ cwd: rnAndroid });
+    expect(artifacts[0]?.path).toBe(join(rnAndroid, 'app/build/outputs/apk/release/app-release.apk'));
+  });
+});
+
+describe('androidProjectRoot (SPEC §5.3)', () => {
+  it('resolves the android/ subdirectory for react-native and flutter', () => {
+    expect(androidProjectRoot('/root', 'react-native')).toBe(join('/root', 'android'));
+    expect(androidProjectRoot('/root', 'flutter')).toBe(join('/root', 'android'));
+  });
+
+  it('uses the run cwd for native android and unknown types', () => {
+    expect(androidProjectRoot('/root', 'android')).toBe('/root');
+    expect(androidProjectRoot('/root', undefined)).toBe('/root');
   });
 });

@@ -58,6 +58,14 @@ export function versionStep(config: CaricamentoConfig, overrides: VersionOverrid
   };
 }
 
+/**
+ * React Native / Flutter keep the Android project in <root>/android;
+ * native Android projects are built from the root itself (SPEC §5.3).
+ */
+export function androidProjectRoot(cwd: string, projectType: unknown): string {
+  return projectType === 'react-native' || projectType === 'flutter' ? join(cwd, 'android') : cwd;
+}
+
 export function androidBuildStep(builder: Builder, artifactType: 'aab' | 'apk'): Step {
   return {
     id: 'build:android',
@@ -68,6 +76,7 @@ export function androidBuildStep(builder: Builder, artifactType: 'aab' | 'apk'):
         artifactType,
         versionCode: ctx.data.get('versionCode') as number | undefined,
         versionName: ctx.data.get('versionName') as string | undefined,
+        projectRoot: androidProjectRoot(ctx.cwd, ctx.data.get('projectType')),
       });
       return { artifacts, data: { artifacts } };
     },
@@ -143,20 +152,25 @@ export function locateArtifactStep(artifactPath: string | undefined, artifactTyp
 }
 
 async function findNewestArtifact(root: string, artifactType: 'aab' | 'apk'): Promise<string | null> {
-  const outputsRoot = join(root, 'app', 'build', 'outputs', artifactType === 'aab' ? 'bundle' : 'apk');
+  // Native Android keeps outputs in <root>/app/...; RN/Flutter in <root>/android/app/...
+  const outputsRoots = [root, join(root, 'android')].map((r) =>
+    join(r, 'app', 'build', 'outputs', artifactType === 'aab' ? 'bundle' : 'apk'),
+  );
   const candidates: string[] = [];
-  try {
-    const variants = await readdir(outputsRoot);
-    for (const variant of variants) {
-      try {
-        const files = await readdir(join(outputsRoot, variant));
-        candidates.push(...files.filter((f) => f.endsWith(`.${artifactType}`)).map((f) => join(outputsRoot, variant, f)));
-      } catch {
-        // not a directory
+  for (const outputsRoot of outputsRoots) {
+    try {
+      const variants = await readdir(outputsRoot);
+      for (const variant of variants) {
+        try {
+          const files = await readdir(join(outputsRoot, variant));
+          candidates.push(...files.filter((f) => f.endsWith(`.${artifactType}`)).map((f) => join(outputsRoot, variant, f)));
+        } catch {
+          // not a directory
+        }
       }
+    } catch {
+      // outputs directory does not exist at this root
     }
-  } catch {
-    return null;
   }
   let newest: { path: string; mtimeMs: number } | null = null;
   for (const path of candidates) {

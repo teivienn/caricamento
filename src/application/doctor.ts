@@ -48,10 +48,14 @@ export class DoctorUseCase {
     if (existsSync(join(cwd, 'gradlew'))) {
       return { name: 'gradle wrapper', status: 'ok', message: './gradlew found' };
     }
+    // React Native / Flutter projects keep the Android wrapper in android/
+    if (existsSync(join(cwd, 'android', 'gradlew'))) {
+      return { name: 'gradle wrapper', status: 'ok', message: './android/gradlew found' };
+    }
     return {
       name: 'gradle wrapper',
       status: 'fail',
-      message: 'gradlew not found in project root',
+      message: 'gradlew not found in project root or android/',
       hint: 'Generate it with `gradle wrapper` in the project, or use a project that already has one.',
     };
   }

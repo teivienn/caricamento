@@ -71,6 +71,7 @@ export class GradleBuilder implements Builder {
   }
 
   async build(ctx: StepContext, request: BuildRequest): Promise<Artifact[]> {
+    const projectRoot = request.projectRoot ?? ctx.cwd;
     const plan = this.plan(request);
     const signingArgs = ctx.dryRun ? redactedSigningArgs(this.config) : await this.buildSigningArgs();
     const args = [plan.task, ...signingArgs];
@@ -79,13 +80,13 @@ export class GradleBuilder implements Builder {
     if (request.versionName !== undefined) args.push(`-PCARICAMENTO_VERSION_NAME=${request.versionName}`);
 
     if (ctx.dryRun) {
-      ctx.log('stdout', `[dry-run] ./gradlew ${args.map(redactSigningArg).join(' ')}`);
+      ctx.log('stdout', `[dry-run] (cd ${projectRoot} && ./gradlew ${args.map(redactSigningArg).join(' ')})`);
       return [];
     }
 
     ctx.log('stdout', `./gradlew ${args.map(redactSigningArg).join(' ')}`);
     const result = await this.processes.run('./gradlew', args, {
-      cwd: ctx.cwd,
+      cwd: projectRoot,
       onLine: (stream, line) => ctx.log(stream, line),
     });
     if (result.exitCode !== 0) {
@@ -95,7 +96,7 @@ export class GradleBuilder implements Builder {
       });
     }
 
-    return this.collectArtifacts(ctx.cwd, plan);
+    return this.collectArtifacts(projectRoot, plan);
   }
 
   private async collectArtifacts(root: string, plan: GradleBuildPlan): Promise<Artifact[]> {
