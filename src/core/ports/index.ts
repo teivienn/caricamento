@@ -48,6 +48,26 @@ export interface Builder {
   build(ctx: StepContext, request: BuildRequest): Promise<Artifact[]>;
 }
 
+export interface RegisteredProject {
+  name: string;
+  /** Absolute path to the project root. */
+  path: string;
+  /**
+   * Explicit config path. Resolution chain when omitted:
+   * ~/.caricamento/projects/<name>.config.ts -> <path>/caricamento.config.ts.
+   */
+  config?: string;
+  addedAt: string;
+}
+
+/** Registry of known projects, enabling runs by name from any directory. */
+export interface ProjectRegistry {
+  add(project: RegisteredProject): Promise<void>;
+  remove(name: string): Promise<void>;
+  get(name: string): Promise<RegisteredProject | null>;
+  list(): Promise<RegisteredProject[]>;
+}
+
 export interface PublishRequest {
   artifact: Artifact;
   releaseNotes?: string;
