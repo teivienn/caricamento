@@ -24,9 +24,10 @@ export default {
 
   targets: {
     firebase: {
-      // Placeholder — replace with a real Firebase app ID to actually upload.
-      appIdAndroid: '1:1234567890:android:0000000000000000000000',
+      appIdAndroid: '1:1083921360192:android:7fb11741b80075995fc6a5',
       groups: ['qa'],
+      releaseNotes: 'Caricamento end-to-end test release',
+      // Auth: GOOGLE_APPLICATION_CREDENTIALS points at .caricamento/firebase-sa.json
     },
   },
 };

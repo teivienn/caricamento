@@ -6,7 +6,10 @@ import type { Publisher, PublishRequest, PublishResult } from '../../../core/por
 import type { TokenProvider } from './auth.js';
 
 const API_BASE = 'https://firebaseappdistribution.googleapis.com';
-const UPLOAD_BASE = `https://upload.firebaseappdistribution.googleapis.com`;
+// Media upload lives on the SAME host under /upload/... — the
+// upload.<api>.googleapis.com subdomain pattern is NOT valid for this API
+// (its TLS cert only covers *.googleapis.com, one level deep).
+const UPLOAD_BASE = API_BASE;
 const MAX_RETRIES = 3;
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -65,7 +68,8 @@ export class FirebasePublisher implements Publisher {
   async publish(ctx: StepContext, request: PublishRequest): Promise<PublishResult> {
     const app = this.appResource();
     const releaseNotes = request.releaseNotes ?? this.options.config.releaseNotes;
-    const groups = this.options.config.groups.map((g) => (g.startsWith('groups/') ? g : `groups/${g}`));
+    // The API expects bare group aliases ("qa"), NOT resource names ("groups/qa").
+    const groups = this.options.config.groups.map((g) => g.replace(/^groups\//, ''));
 
     if (ctx.dryRun) {
       ctx.log('stdout', `[dry-run] would upload ${request.artifact.path} to ${app} and distribute to [${groups.join(', ')}]`);
@@ -111,7 +115,7 @@ export class FirebasePublisher implements Publisher {
 
   private async upload(app: string, artifactPath: string, headers: Record<string, string>): Promise<Operation> {
     const body = await readFile(artifactPath);
-    const url = `${UPLOAD_BASE}/upload/v1/${app}:releases:upload`;
+    const url = `${UPLOAD_BASE}/upload/v1/${app}/releases:upload`;
     return this.withRetries(async () => {
       const response = await this.fetchImpl(url, {
         method: 'POST',

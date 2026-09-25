@@ -28,7 +28,7 @@ const server = setupServer(
     const body = request.method === 'GET' ? undefined : await request.json().catch(() => undefined);
     recorded.push({ method: request.method, url: url.toString(), body, authorization: request.headers.get('authorization') });
 
-    if (request.method === 'POST' && url.pathname.endsWith(':releases:upload')) {
+    if (request.method === 'POST' && url.pathname.endsWith('/releases:upload')) {
       if (failUpload) {
         return HttpResponse.json({ error: { message: 'forbidden' } }, { status: 403 });
       }
@@ -103,7 +103,7 @@ describe('FirebasePublisher (SPEC §7.3)', () => {
 
     const [upload, , , patch, distribute] = recorded;
     expect(upload?.url).toBe(
-      'https://upload.firebaseappdistribution.googleapis.com/upload/v1/projects/1/apps/1:1:android:abc:releases:upload',
+      'https://firebaseappdistribution.googleapis.com/upload/v1/projects/1/apps/1:1:android:abc/releases:upload',
     );
     expect(upload?.authorization).toBe('Bearer test-token');
 
@@ -113,7 +113,7 @@ describe('FirebasePublisher (SPEC §7.3)', () => {
 
     expect(distribute?.url).toContain(`${RELEASE_NAME}:distribute`);
     expect(distribute?.body).toEqual({
-      groupAliases: ['groups/qa', 'groups/internal'],
+      groupAliases: ['qa', 'internal'],
       testerEmails: ['dev@example.com'],
     });
   });

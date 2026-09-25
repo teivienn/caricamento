@@ -14,3 +14,4 @@ fixtures/**/local.properties
 
 # NOTE: fixtures/android-native/keystore/test-upload.keystore IS committed
 # on purpose — it is a throwaway test-only keystore (see fixtures/README.md).
+.caricamento/
