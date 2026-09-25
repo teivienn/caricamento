@@ -1,0 +1,41 @@
+{
+  "name": "caricamento",
+  "version": "0.1.0",
+  "description": "CLI to build, sign and distribute mobile app releases (Android + Firebase App Distribution MVP)",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "caricamento": "dist/cli/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "google-auth-library": "^11.1.0",
+    "jiti": "^2.7.0",
+    "ora": "^9.4.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.2",
+    "eslint": "^10.11.0",
+    "msw": "^2.15.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
+  }
+}

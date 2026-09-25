@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.env
+*.log
+
+# Build outputs inside fixture projects
+fixtures/**/build/
+fixtures/**/.gradle/
+fixtures/**/local.properties
+
+# macOS
+.DS_Store
+
+# NOTE: fixtures/android-native/keystore/test-upload.keystore IS committed
+# on purpose — it is a throwaway test-only keystore (see fixtures/README.md).
