@@ -46,9 +46,40 @@ Credentials: alias `upload`, store password `android`, key password `android`.
 It is committed to git **on purpose** so integration can be exercised locally.
 Never use it (or these passwords) for a real application.
 
+## react-native-cli/
+
+A real React Native CLI project (`@react-native-community/cli init`,
+RN 0.87). The Android project lives in `android/` — caricamento detects the
+`react-native` project type and builds inside that subdirectory (SPEC §5.3).
+
+Wired for caricamento: `android/app/build.gradle` reads the `CARICAMENTO_*`
+signing/version properties with a fallback to the committed test-only
+`android/keystore/test-upload.keystore`; `applicationId` is
+`com.caricamento.fixture` to match the shared test Firebase app.
+
+```bash
+npm install   # required once — the RN Gradle plugin needs node_modules
+caricamento release --platform android --targets firebase
+```
+
+## react-native-expo/
+
+A real Expo project (`create-expo-app --template blank`) ejected to the bare
+workflow via `expo prebuild --platform android`, so it has a native `android/`
+directory and is built exactly like the RN CLI fixture. The Android package
+`com.caricamento.fixture` comes from `app.json` → `expo.android.package`.
+
+Note: `create-expo-app` refuses a directory literally named `expo` (npm
+dependency name conflict) — hence `react-native-expo`.
+
+```bash
+npm install   # if node_modules is missing
+caricamento release --platform android --targets firebase
+```
+
 ## flutter/ and react-native/
 
 These are **marker fixtures only** — `pubspec.yaml` / `package.json` plus
 `ios/` and `android/` directories, just enough for `ProjectDetector` unit tests
-(SPEC.md §4). They are not runnable Flutter/React Native apps; generating real
-ones was deemed too heavy for this milestone.
+(SPEC.md §4). They are not runnable apps; the runnable RN fixtures above are
+too heavy for unit tests (they require `npm install` first).
