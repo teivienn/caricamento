@@ -5,6 +5,7 @@ import type { CaricamentoConfig } from '../../core/config/schema.js';
 import { BuildError } from '../../core/errors.js';
 import type { StepContext } from '../../core/pipeline/types.js';
 import type { Builder, BuildRequest, ProcessRunner, SecretResolver } from '../../core/ports/index.js';
+import { renderGradleInitScript, writeGradleInitScript } from './gradle-init-script.js';
 
 export interface GradleBuildPlan {
   task: string;
@@ -73,30 +74,67 @@ export class GradleBuilder implements Builder {
   async build(ctx: StepContext, request: BuildRequest): Promise<Artifact[]> {
     const projectRoot = request.projectRoot ?? ctx.cwd;
     const plan = this.plan(request);
-    const signingArgs = ctx.dryRun ? redactedSigningArgs(this.config) : await this.buildSigningArgs();
-    const args = [plan.task, ...signingArgs];
-
-    if (request.versionCode !== undefined) args.push(`-PCARICAMENTO_VERSION_CODE=${request.versionCode}`);
-    if (request.versionName !== undefined) args.push(`-PCARICAMENTO_VERSION_NAME=${request.versionName}`);
+    const signing = this.config.android?.signing;
+    const useInitScript = signing !== undefined && signing.injection === 'init-script';
 
     if (ctx.dryRun) {
-      ctx.log('stdout', `[dry-run] (cd ${projectRoot} && ./gradlew ${args.map(redactSigningArg).join(' ')})`);
+      const args = useInitScript
+        ? ['-I', '<generated-init-script>', plan.task]
+        : [plan.task, ...redactedSigningArgs(this.config), ...versionArgs(request)];
+      ctx.log('stdout', `[dry-run] (cd ${projectRoot} && ./gradlew ${args.join(' ')})`);
       return [];
     }
 
-    ctx.log('stdout', `./gradlew ${args.map(redactSigningArg).join(' ')}`);
-    const result = await this.processes.run('./gradlew', args, {
-      cwd: projectRoot,
-      onLine: (stream, line) => ctx.log(stream, line),
-    });
-    if (result.exitCode !== 0) {
-      throw new BuildError(`Gradle task ${plan.task} failed with exit code ${result.exitCode}`, {
-        hint: 'Run the same gradlew command manually to see the full error output.',
-        context: { task: plan.task },
+    let initScript: { path: string; cleanup: () => Promise<void> } | undefined;
+    let args: string[];
+    if (useInitScript) {
+      const values = await this.resolveSigningValues();
+      initScript = await writeGradleInitScript(
+        renderGradleInitScript({
+          signing: values,
+          buildType: this.config.android?.buildType ?? 'release',
+          versionCode: request.versionCode,
+          versionName: request.versionName,
+        }),
+      );
+      args = ['-I', initScript.path, plan.task];
+    } else {
+      args = [plan.task, ...(await this.buildSigningArgs()), ...versionArgs(request)];
+    }
+
+    try {
+      ctx.log('stdout', `./gradlew ${args.map(redactSigningArg).join(' ')}`);
+      const result = await this.processes.run('./gradlew', args, {
+        cwd: projectRoot,
+        onLine: (stream, line) => ctx.log(stream, line),
       });
+      if (result.exitCode !== 0) {
+        throw new BuildError(`Gradle task ${plan.task} failed with exit code ${result.exitCode}`, {
+          hint: 'Run the same gradlew command manually to see the full error output.',
+          context: { task: plan.task },
+        });
+      }
+    } finally {
+      await initScript?.cleanup();
     }
 
     return this.collectArtifacts(projectRoot, plan);
+  }
+
+  private async resolveSigningValues(): Promise<{
+    storeFile: string;
+    storePassword: string;
+    keyAlias: string;
+    keyPassword: string;
+  }> {
+    const signing = this.config.android?.signing;
+    if (!signing) throw new BuildError('android.signing is not configured');
+    const [storeFile, storePassword, keyPassword] = await Promise.all([
+      this.secrets.resolve(signing.keystoreRef),
+      this.secrets.resolve(signing.keystorePasswordRef),
+      this.secrets.resolve(signing.keyPasswordRef),
+    ]);
+    return { storeFile, storePassword, keyAlias: signing.keyAlias, keyPassword };
   }
 
   private async collectArtifacts(root: string, plan: GradleBuildPlan): Promise<Artifact[]> {
@@ -131,6 +169,13 @@ export class GradleBuilder implements Builder {
     }
     return artifacts;
   }
+}
+
+function versionArgs(request: BuildRequest): string[] {
+  const args: string[] = [];
+  if (request.versionCode !== undefined) args.push(`-PCARICAMENTO_VERSION_CODE=${request.versionCode}`);
+  if (request.versionName !== undefined) args.push(`-PCARICAMENTO_VERSION_NAME=${request.versionName}`);
+  return args;
 }
 
 function redactedSigningArgs(config: CaricamentoConfig): string[] {

@@ -17,6 +17,16 @@ const androidSigningSchema = z.object({
   keyPasswordRef: secretRef,
   /** Expected SHA-256 of the upload certificate; verified post-build via apksigner (SPEC §6.2). */
   expectedCertificateSha256: z.string().regex(/^([0-9a-fA-F]{2}:?){32}$/).optional(),
+  /**
+   * How signing is applied to the build:
+   * - 'init-script' (default): zero-touch — a generated Gradle init script
+   *   overrides the release signingConfig externally (`gradlew -I`), the
+   *   project files are never modified and may even be regenerated
+   *   (e.g. `expo prebuild --clean`).
+   * - 'properties': signing is passed via -PCARICAMENTO_* properties and the
+   *   project's build.gradle must read them (SPEC §5.1).
+   */
+  injection: z.enum(['init-script', 'properties']).default('init-script'),
 });
 
 const androidSchema = z.object({

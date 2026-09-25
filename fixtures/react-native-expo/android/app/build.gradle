@@ -81,14 +81,6 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
-// Signing/version properties injected by caricamento via -P flags (SPEC.md §5.1).
-def storeFileProp = project.findProperty('CARICAMENTO_STORE_FILE')
-def storePasswordProp = project.findProperty('CARICAMENTO_STORE_PASSWORD')
-def keyAliasProp = project.findProperty('CARICAMENTO_KEY_ALIAS')
-def keyPasswordProp = project.findProperty('CARICAMENTO_KEY_PASSWORD')
-def versionCodeProp = project.findProperty('CARICAMENTO_VERSION_CODE')
-def versionNameProp = project.findProperty('CARICAMENTO_VERSION_NAME')
-
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -100,8 +92,8 @@ android {
         applicationId 'com.caricamento.fixture'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode(versionCodeProp != null ? versionCodeProp.toInteger() : 1)
-        versionName(versionNameProp != null ? versionNameProp.toString() : "1.0.0")
+        versionCode 1
+        versionName "1.0.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -112,28 +104,15 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        release {
-            if (storeFileProp != null) {
-                storeFile file(storeFileProp)
-                storePassword storePasswordProp
-                keyAlias keyAliasProp
-                keyPassword keyPasswordProp
-            } else {
-                // Test-only fallback so the fixture builds out of the box.
-                // NEVER do this in a real project — see fixtures/README.md.
-                storeFile rootProject.file('keystore/test-upload.keystore')
-                storePassword 'android'
-                keyAlias 'upload'
-                keyPassword 'android'
-            }
-        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

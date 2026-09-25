@@ -52,28 +52,34 @@ A real React Native CLI project (`@react-native-community/cli init`,
 RN 0.87). The Android project lives in `android/` — caricamento detects the
 `react-native` project type and builds inside that subdirectory (SPEC §5.3).
 
-Wired for caricamento: `android/app/build.gradle` reads the `CARICAMENTO_*`
-signing/version properties with a fallback to the committed test-only
-`android/keystore/test-upload.keystore`; `applicationId` is
-`com.caricamento.fixture` to match the shared test Firebase app.
+**Zero-touch signing:** `android/app/build.gradle` is the vanilla template —
+signing and versioning are injected externally via a generated Gradle init
+script (`android.signing.injection: 'init-script'`, the default; SPEC §5.1).
+`applicationId` is `com.caricamento.fixture` to match the shared test
+Firebase app.
 
 ```bash
 npm install   # required once — the RN Gradle plugin needs node_modules
+export ANDROID_KEYSTORE_PATH=<abs path to android-native/keystore/test-upload.keystore>
+export ANDROID_KEYSTORE_PASSWORD=android ANDROID_KEY_PASSWORD=android
 caricamento release --platform android --targets firebase
 ```
 
 ## react-native-expo/
 
 A real Expo project (`create-expo-app --template blank`) ejected to the bare
-workflow via `expo prebuild --platform android`, so it has a native `android/`
-directory and is built exactly like the RN CLI fixture. The Android package
-`com.caricamento.fixture` comes from `app.json` → `expo.android.package`.
+workflow via `expo prebuild --platform android`. The Android package
+`com.caricamento.fixture` comes from `app.json` → `expo.android.package` and
+survives re-prebuilds; signing does not depend on `android/` contents at all
+(init-script injection), so `npx expo prebuild --clean` is safe to run.
 
 Note: `create-expo-app` refuses a directory literally named `expo` (npm
 dependency name conflict) — hence `react-native-expo`.
 
 ```bash
 npm install   # if node_modules is missing
+export ANDROID_KEYSTORE_PATH=<abs path to android-native/keystore/test-upload.keystore>
+export ANDROID_KEYSTORE_PASSWORD=android ANDROID_KEY_PASSWORD=android
 caricamento release --platform android --targets firebase
 ```
 

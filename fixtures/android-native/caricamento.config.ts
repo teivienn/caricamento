@@ -8,11 +8,10 @@ export default {
     module: 'app',
     buildType: 'release',
     signing: {
-      // Test-only values matching fixtures/android-native/keystore/test-upload.keystore.
-      // For local runs, put these in a .env file in THIS directory:
-      //   ANDROID_KEYSTORE_PATH=<abs path to keystore/test-upload.keystore>
-      //   ANDROID_KEYSTORE_PASSWORD=android
-      //   ANDROID_KEY_PASSWORD=android
+      // This fixture exercises the 'properties' injection mode (SPEC §5.1):
+      // its app/build.gradle reads the -PCARICAMENTO_* properties.
+      // The RN/Expo fixtures use the default zero-touch 'init-script' mode.
+      injection: 'properties' as const,
       keystoreRef: 'secret:android/keystore-path',
       keystorePasswordRef: 'secret:android/keystore-password',
       keyAlias: 'upload',

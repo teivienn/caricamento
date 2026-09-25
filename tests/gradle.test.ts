@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -62,7 +62,7 @@ describe('GradleBuilder', () => {
     expect(plan.outputDir).toBe(join('app', 'build', 'outputs', 'bundle', 'prodRelease'));
   });
 
-  it('injects signing and version properties into the gradlew invocation', async () => {
+  it('injects signing and version properties into the gradlew invocation (properties mode)', async () => {
     const config = makeConfig({
       module: 'app',
       buildType: 'release',
@@ -71,6 +71,7 @@ describe('GradleBuilder', () => {
         keystorePasswordRef: 'secret:android/keystore-password',
         keyAlias: 'upload',
         keyPasswordRef: 'secret:android/key-password',
+        injection: 'properties',
       },
     });
     const secrets = makeSecrets({
@@ -151,6 +152,80 @@ describe('GradleBuilder', () => {
     expect(runMock).toHaveBeenCalledOnce();
     expect(runMock.mock.calls[0]?.[2]).toMatchObject({ cwd: rnAndroid });
     expect(artifacts[0]?.path).toBe(join(rnAndroid, 'app/build/outputs/apk/release/app-release.apk'));
+  });
+});
+
+describe('GradleBuilder init-script injection (default)', () => {
+  let dir: string;
+  let runner: ProcessRunner;
+  const runMock =
+    vi.fn<(cmd: string, args: string[], options?: { cwd?: string }) => Promise<{ exitCode: number; stdout: string; stderr: string }>>();
+
+  const signingConfig = {
+    keystoreRef: 'secret:android/keystore-path',
+    keystorePasswordRef: 'secret:android/keystore-password',
+    keyAlias: 'upload',
+    keyPasswordRef: 'secret:android/key-password',
+  };
+  const secrets = makeSecrets({
+    'secret:android/keystore-path': '/tmp/test.keystore',
+    'secret:android/keystore-password': "store'pass",
+    'secret:android/key-password': 'keypass',
+  });
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'caricamento-gradle-init-'));
+    runMock.mockReset();
+    runMock.mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
+    runner = { run: runMock, which: async () => null };
+    await mkdir(join(dir, 'app/build/outputs/apk/release'), { recursive: true });
+    await writeFile(join(dir, 'app/build/outputs/apk/release/app-release.apk'), 'fake-apk');
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('passes a generated init script instead of -P signing properties', async () => {
+    let scriptContent = '';
+    let scriptPath = '';
+    runMock.mockImplementation(async (_cmd, args) => {
+      scriptPath = args[1]!;
+      scriptContent = await readFile(scriptPath, 'utf8');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+
+    const builder = new GradleBuilder(runner, secrets, makeConfig({ module: 'app', buildType: 'release', signing: signingConfig }));
+    await builder.build(makeContext(dir), {
+      platform: 'android',
+      artifactType: 'apk',
+      versionCode: 42,
+      versionName: '2.0.0',
+    });
+
+    const [, args] = runMock.mock.calls[0]!;
+    expect(args[0]).toBe('-I');
+    expect(args[2]).toBe(':app:assembleRelease');
+    expect(args.some((a) => a.startsWith('-PCARICAMENTO_'))).toBe(false);
+
+    expect(scriptContent).toContain("storeFile project.file('/tmp/test.keystore')");
+    expect(scriptContent).toContain("storePassword 'store\\'pass'"); // groovy-escaped
+    expect(scriptContent).toContain("keyAlias 'upload'");
+    expect(scriptContent).toContain('buildType.signingConfig = androidExt.signingConfigs.caricamento');
+    expect(scriptContent).toContain('androidExt.defaultConfig.versionCode = 42');
+    expect(scriptContent).toContain("androidExt.defaultConfig.versionName = '2.0.0'");
+
+    // the temp file with plaintext passwords must be removed after the build
+    await expect(readFile(scriptPath, 'utf8')).rejects.toThrow();
+  });
+
+  it('redacts the init script path target in dry-run output', async () => {
+    const logs: string[] = [];
+    const ctx = { ...makeContext(dir, true), log: (_s: string, line: string) => logs.push(line) };
+    const builder = new GradleBuilder(runner, secrets, makeConfig({ module: 'app', signing: signingConfig }));
+    await builder.build(ctx, { platform: 'android', artifactType: 'apk' });
+    expect(runMock).not.toHaveBeenCalled();
+    expect(logs.join('\n')).toContain('<generated-init-script>');
   });
 });
 
