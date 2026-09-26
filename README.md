@@ -20,15 +20,11 @@ against a real Apple Developer account. Unsigned iOS builds do not need one.
 
 ## Install
 
-The package is not on npm yet. Install from source:
-
 ```bash
-git clone https://github.com/teivienn/caricamento.git
-cd caricamento
-npm install
-npm run build
-npm link
+npm install -g caricamento
 ```
+
+Release history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Quickstart
 
@@ -89,6 +85,8 @@ Flags that work on every command: `--config <path>`, `--verbose`, `--json`,
 - [AAB → APK](docs/apk.md)
 - [Release notes from git](docs/changelog.md)
 - [Roadmap](docs/roadmap.md)
+
+Development setup and review rules: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

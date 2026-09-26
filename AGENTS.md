@@ -2,6 +2,8 @@
 
 Guidance for AI agents working in this repo. Read this before changing code.
 `README.md` is the user-facing front page; `docs/` holds the long-form reference.
+`CONTRIBUTING.md` is the human contributor guide (setup, checks, invariants).
+Keep it in sync when those rules change.
 
 ## What this is
 
@@ -153,7 +155,7 @@ These have been broken before. Check here before "fixing" them.
 - `secrets.md` — env vars, Keychain, `.env` files
 - `firebase.md`, `google-play.md`, `internal-app-sharing.md`, `app-store.md` — per-target setup
 - `apk.md` — AAB -> universal APK via bundletool
-- `changelog.md` — release notes from git
+- `changelog.md` — release notes the CLI generates from the target project's git history (not the package history; that is root `CHANGELOG.md`)
 - `roadmap.md` — backlog / not-yet-implemented features
 - `fixtures/README.md` — how to build and run each fixture
 

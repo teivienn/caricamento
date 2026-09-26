@@ -1,0 +1,67 @@
+name: Bug report
+description: The caricamento CLI failed or did something unexpected
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report.
+        Do not paste keystore passwords, API keys, `.p8` files, or service-account JSON.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen.
+      placeholder: The command, what you saw, and what you expected.
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      description: What part of caricamento is broken?
+      options:
+        - Android build or signing
+        - iOS build or signing
+        - Firebase App Distribution
+        - Google Play
+        - Internal App Sharing
+        - App Store Connect / TestFlight
+        - Config, secrets, or project registry
+        - Versioning or variants
+        - AAB to APK
+        - Project detection
+        - CLI
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `caricamento --version`.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: project-type
+    attributes:
+      label: Project type
+      description: The app caricamento was pointed at, if the bug is about a build or upload.
+      options:
+        - Native Android
+        - Native iOS
+        - React Native CLI
+        - Expo
+        - Not specific to a project
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: |
+        Paste `caricamento doctor` and the failing command run with `--verbose`
+        or the `--json` error. This is rendered as a code block. Strip secrets first.
+      render: shell
