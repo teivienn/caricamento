@@ -61,6 +61,10 @@ export async function createContainer(options: ContainerOptions): Promise<Contai
   ]);
   const runs = new RunStore();
 
+  // Configs are executable TS and may read project files (e.g. versionName
+  // from package.json); registry configs live outside the project, so the
+  // project dir is exposed via this env var before the config is evaluated.
+  process.env.CARICAMENTO_PROJECT_DIR = cwd;
   const config = options.configOverride ?? (await new JitiConfigLoader().loadValidated(resolveConfigPath(cwd, options.configPath)));
 
   const builder = new GradleBuilder(processes, secrets, config);

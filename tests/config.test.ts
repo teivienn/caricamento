@@ -121,6 +121,27 @@ describe('config loading', () => {
     expect(() => resolveConfigPath(dir)).toThrow(ConfigError);
   });
 
+  it('configs can read project files via CARICAMENTO_PROJECT_DIR (e.g. versionName from package.json)', async () => {
+    const projectDir = join(dir, 'project');
+    await writeFile(join(dir, 'caricamento.config.ts'), `
+      import { readFileSync } from 'node:fs';
+      import { join } from 'node:path';
+      const pkg = JSON.parse(readFileSync(join(process.env.CARICAMENTO_PROJECT_DIR!, 'package.json'), 'utf8'));
+      export default { version: { strategy: 'manual' as const, buildNumber: 1, name: pkg.version } };
+    `);
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(projectDir);
+    await writeFile(join(projectDir, 'package.json'), JSON.stringify({ version: '3.2.1' }));
+
+    process.env.CARICAMENTO_PROJECT_DIR = projectDir;
+    try {
+      const config = await new JitiConfigLoader().loadValidated(resolveConfigPath(dir));
+      expect(config.version.name).toBe('3.2.1');
+    } finally {
+      delete process.env.CARICAMENTO_PROJECT_DIR;
+    }
+  });
+
   it('throws ConfigError on schema violations', async () => {
     await writeFile(join(dir, 'caricamento.config.ts'), `export default { version: { strategy: 'nope' } };\n`);
     await expect(new JitiConfigLoader().loadValidated(resolveConfigPath(dir))).rejects.toThrow(ConfigError);

@@ -288,6 +288,29 @@ Firebase. Play — источник истины (все треки); Firebase �
 `versionName` всегда вручную: `version.name` в конфиге или `--version 1.0.4`.
 Флаги CLI перекрывают конфиг.
 
+**Совет: versionName из package.json.** Конфиг — исполняемый TypeScript,
+поэтому версию можно читать прямо из проекта. Перед загрузкой конфига
+выставляется `CARICAMENTO_PROJECT_DIR` (абсолютный путь к проекту) — это
+работает и для конфигов реестра в `~/.caricamento/projects/`:
+
+```typescript
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const pkg = JSON.parse(
+  readFileSync(join(process.env.CARICAMENTO_PROJECT_DIR!, 'package.json'), 'utf8'),
+);
+
+export default {
+  version: { strategy: 'auto-increment', name: pkg.version },
+  // ...
+};
+```
+
+(Для in-project конфига можно и от файла конфига:
+`new URL('./package.json', import.meta.url)` — но вариант с
+`CARICAMENTO_PROJECT_DIR` универсален.)
+
 ### Варианты сборки (qa/prod)
 
 Одно приложение можно публиковать под несколькими applicationId — например,
