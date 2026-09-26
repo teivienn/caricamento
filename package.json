@@ -1,6 +1,6 @@
 {
   "name": "caricamento",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI that builds, signs and publishes Android and iOS releases to Firebase App Distribution, Google Play and TestFlight in one command.",
   "keywords": [
     "cli",

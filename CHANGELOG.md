@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-26
+
 ### Changed
 
 - Install instructions point at `npm install -g caricamento`.
@@ -34,4 +36,5 @@ First published release.
 TestFlight upload is implemented and unit-tested. It has not been verified
 against a real Apple Developer account.
 
+[0.1.1]: https://www.npmjs.com/package/caricamento/v/0.1.1
 [0.1.0]: https://www.npmjs.com/package/caricamento/v/0.1.0
