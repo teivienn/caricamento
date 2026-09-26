@@ -1,6 +1,6 @@
 # Fixtures
 
-Minimal projects used by unit tests and for manual end-to-end checks (SPEC.md §12).
+Minimal projects used by unit tests and for manual end-to-end checks.
 
 ## android-native/
 
@@ -50,11 +50,11 @@ Never use it (or these passwords) for a real application.
 
 A real React Native CLI project (`@react-native-community/cli init`,
 RN 0.87). The Android project lives in `android/` — caricamento detects the
-`react-native` project type and builds inside that subdirectory (SPEC §5.3).
+`react-native` project type and builds inside that subdirectory.
 
 **Zero-touch signing:** `android/app/build.gradle` is the vanilla template —
 signing and versioning are injected externally via a generated Gradle init
-script (`android.signing.injection: 'init-script'`, the default; SPEC §5.1).
+script (`android.signing.injection: 'init-script'`, the default).
 `applicationId` is `com.caricamento.fixture` to match the shared test
 Firebase app.
 
@@ -110,7 +110,7 @@ bundle ID to one registered in your App Store Connect account (variant
 ## flutter/
 
 A **marker fixture only** — `pubspec.yaml` plus `ios/` and `android/`
-directories, just enough for `ProjectDetector` unit tests (SPEC.md §4). Not a
+directories, just enough for `ProjectDetector` unit tests. Not a
 runnable app. (React Native detection is tested against the real
 `react-native-cli` / `react-native-expo` fixtures above — detection only
 checks file existence, so no `npm install` is needed.)
