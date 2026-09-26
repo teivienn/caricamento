@@ -5,5 +5,11 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     environment: 'node',
     testTimeout: 15000,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      reporter: ['text', 'json-summary', 'lcov'],
+      reportsDirectory: 'coverage',
+    },
   },
 });

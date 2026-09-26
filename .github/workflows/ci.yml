@@ -1,0 +1,79 @@
+# PR checks: lint, typecheck and unit tests with coverage.
+# Deliberately no `npm run build`, fixture, Android or iOS builds here.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Lint & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+  test:
+    name: Unit tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # vitest 5 requires Node ^22.12 || ^24, so Node 20 (engines floor) can't run the suite.
+        include:
+          - node: 22
+          - node: 24
+            coverage: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+
+      - name: Unit tests
+        if: ${{ !matrix.coverage }}
+        run: npm test
+
+      - name: Unit tests with coverage
+        if: ${{ matrix.coverage }}
+        run: npm run test:coverage
+
+      - name: Coverage summary
+        if: ${{ matrix.coverage }}
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const { total } = JSON.parse(readFileSync("coverage/coverage-summary.json", "utf8"));
+            const rows = ["lines", "statements", "functions", "branches"].map(
+              (k) => `| ${k} | ${total[k].pct}% | ${total[k].covered} / ${total[k].total} |`,
+            );
+            console.log(["### Coverage", "", "| Metric | % | Covered |", "|---|---|---|", ...rows].join("\n"));
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: ${{ matrix.coverage }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: error
+          retention-days: 14
