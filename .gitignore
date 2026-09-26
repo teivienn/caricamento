@@ -8,6 +8,7 @@ coverage/
 fixtures/**/build/
 fixtures/**/.gradle/
 fixtures/**/local.properties
+fixtures/**/xcuserdata/
 
 # macOS
 .DS_Store

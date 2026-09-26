@@ -42,25 +42,85 @@ const androidSchema = z.object({
   signing: androidSigningSchema.optional(),
 });
 
-const iosSchema = z.object({
-  workspace: z.string(),
-  scheme: z.string(),
-  configuration: z.string().default('Release'),
-  signing: z.object({
-    method: z.enum(['app-store', 'development', 'ad-hoc', 'enterprise']).default('app-store'),
-    mode: z.enum(['automatic', 'manual']).default('automatic'),
-    teamId: z.string().min(1),
-  }),
-});
+export const iosExportMethodSchema = z.enum(['app-store', 'ad-hoc', 'development', 'enterprise']);
+export type IosExportMethod = z.infer<typeof iosExportMethodSchema>;
+
+const iosSigningSchema = z
+  .object({
+    /**
+     * - 'automatic' (default): xcodebuild manages profiles itself
+     *   (-allowProvisioningUpdates), authenticated with the ASC API key below.
+     * - 'manual': the .p12 is imported into a temporary keychain and the
+     *   profiles are installed for the duration of the build (SPEC §6.1).
+     * - 'none': unsigned local build (CODE_SIGNING_ALLOWED=NO); the .app is
+     *   packaged into an unsigned .ipa without exportArchive. Cannot be published.
+     */
+    mode: z.enum(['automatic', 'manual', 'none']).default('automatic'),
+    method: iosExportMethodSchema.default('app-store'),
+    teamId: z.string().min(1).optional(),
+    /**
+     * Bundle identifier override, injected as PRODUCT_BUNDLE_IDENTIFIER at
+     * build time (project files are never modified). Usually set per variant.
+     */
+    bundleId: z.string().min(1).optional(),
+    /** automatic: secret ref resolving to the ASC API .p8 key (file path or inline PEM). */
+    apiKeyRef: secretRef.optional(),
+    keyId: z.string().min(1).optional(),
+    issuerId: z.string().min(1).optional(),
+    /** manual: secret ref resolving to a .p12 (file path or base64 content). */
+    certificateRef: secretRef.optional(),
+    certificatePasswordRef: secretRef.optional(),
+    /** manual: secret refs resolving to .mobileprovision files (path or base64). */
+    profileRefs: z.array(secretRef).optional(),
+  })
+  .superRefine((signing, ctx) => {
+    const apiKeyFields = [signing.apiKeyRef, signing.keyId, signing.issuerId].filter((v) => v !== undefined);
+    if (apiKeyFields.length > 0 && apiKeyFields.length < 3) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'ios.signing.apiKeyRef, keyId and issuerId must be set together',
+        path: ['apiKeyRef'],
+      });
+    }
+    if (signing.mode === 'manual') {
+      if (!signing.profileRefs || signing.profileRefs.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'manual signing requires ios.signing.profileRefs', path: ['profileRefs'] });
+      }
+      if (signing.certificateRef && !signing.certificatePasswordRef) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'ios.signing.certificateRef requires certificatePasswordRef',
+          path: ['certificatePasswordRef'],
+        });
+      }
+    }
+  });
+
+const iosSchema = z
+  .object({
+    /** .xcworkspace (CocoaPods / RN) — exactly one of workspace/project is required. */
+    workspace: z.string().min(1).optional(),
+    project: z.string().min(1).optional(),
+    scheme: z.string().min(1),
+    configuration: z.string().default('Release'),
+    /** xcodebuild -destination for the archive. */
+    destination: z.string().default('generic/platform=iOS'),
+    signing: iosSigningSchema.default({ mode: 'automatic', method: 'app-store' }),
+  })
+  .refine((ios) => (ios.workspace === undefined) !== (ios.project === undefined), {
+    message: 'exactly one of ios.workspace or ios.project must be set',
+    path: ['workspace'],
+  });
 
 const versionSchema = z.object({
   strategy: z.enum(['manual', 'timestamp', 'auto-increment']).default('manual'),
   /**
-   * Which API backs `auto-increment`: the current max versionCode is queried
-   * from Google Play (all tracks) or Firebase App Distribution (uploaded
-   * releases). Default: play when targets.play is configured, else firebase.
+   * Which API backs `auto-increment`: Google Play (max versionCode across
+   * tracks), App Store Connect (max CFBundleVersion among builds) or Firebase
+   * App Distribution (uploaded releases). Default: play > appstore > firebase,
+   * among the configured targets native to the platform being built.
    */
-  source: z.enum(['play', 'firebase']).optional(),
+  source: z.enum(['play', 'appstore', 'firebase']).optional(),
   /** Used by the manual strategy; can be overridden with --build. */
   buildNumber: z.number().int().positive().optional(),
   /** versionName / CFBundleShortVersionString; can be overridden with --version. */
@@ -100,6 +160,30 @@ const playSharingTargetSchema = z.object({
   packageName: z.string().min(1),
 });
 
+const appStoreTargetSchema = z.object({
+  /** Secret ref resolving to the ASC API private key (.p8 file path or inline PEM). */
+  apiKeyRef: secretRef,
+  keyId: z.string().min(1),
+  issuerId: z.string().min(1),
+  /** Bundle ID of the app as registered in App Store Connect. */
+  bundleId: z.string().min(1),
+  /** 'appstore' (review submission) is on the roadmap and currently rejected. */
+  distributeTo: z.enum(['testflight', 'appstore']).default('testflight'),
+  /** TestFlight beta group names the processed build is added to. */
+  betaGroups: z.array(z.string().min(1)).default([]),
+  /** TestFlight "What to Test" text (the iOS counterpart of releaseNotes). */
+  whatToTest: z.string().optional(),
+  /** Locale of the "What to Test" localization. */
+  locale: z.string().default('en-US'),
+  /**
+   * Binary upload mechanism: 'api' — App Store Connect Build Uploads REST API
+   * (no Xcode needed at upload time); 'altool' — `xcrun altool --upload-app`.
+   */
+  upload: z.enum(['api', 'altool']).default('api'),
+  /** Upper bound for waiting until ASC finishes processing the build. */
+  processingTimeoutMinutes: z.number().positive().default(30),
+});
+
 const changelogSchema = z.object({
   /** 'git': release notes from commits since the last git tag. */
   source: z.enum(['git']),
@@ -111,19 +195,23 @@ const targetsSchema = z.object({
   firebase: firebaseTargetSchema.optional(),
   play: playTargetSchema.optional(),
   playsharing: playSharingTargetSchema.optional(),
+  appstore: appStoreTargetSchema.optional(),
 });
 
 /**
  * A build variant: one app published under several applicationIds
  * (e.g. qa/prod). Overrides are applied by resolveVariantConfig:
- * flavor/applicationId merge into `android`, while `targets` and `version`
- * REPLACE the base blocks entirely (predictable, no deep merge).
+ * flavor/applicationId merge into `android`, bundleId into `ios.signing`,
+ * while `targets` and `version` REPLACE the base blocks entirely
+ * (predictable, no deep merge).
  */
 const variantSchema = z.object({
   /** Gradle product flavor, for projects that define variants in Gradle. */
   flavor: z.string().optional(),
   /** Tool-injected applicationId override — works on vanilla/regenerated projects. */
   applicationId: z.string().min(1).optional(),
+  /** Tool-injected iOS bundle ID override (PRODUCT_BUNDLE_IDENTIFIER + exportOptions). */
+  bundleId: z.string().min(1).optional(),
   targets: targetsSchema.optional(),
   version: versionSchema.optional(),
 });
@@ -143,5 +231,8 @@ export type AndroidSigningConfig = z.infer<typeof androidSigningSchema>;
 export type FirebaseTargetConfig = z.infer<typeof firebaseTargetSchema>;
 export type PlayTargetConfig = z.infer<typeof playTargetSchema>;
 export type PlaySharingTargetConfig = z.infer<typeof playSharingTargetSchema>;
+export type AppStoreTargetConfig = z.infer<typeof appStoreTargetSchema>;
+export type IosConfig = z.infer<typeof iosSchema>;
+export type IosSigningConfig = z.infer<typeof iosSigningSchema>;
 export type ChangelogConfig = z.infer<typeof changelogSchema>;
 export type VariantConfig = z.infer<typeof variantSchema>;

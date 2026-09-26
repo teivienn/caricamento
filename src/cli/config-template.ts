@@ -24,8 +24,18 @@ export function configTemplate(options: { typed: boolean }): string {
     },
   },
 
+  // ios: {
+  //   project: 'App.xcodeproj',     // or workspace: 'App.xcworkspace' (exactly one)
+  //   scheme: 'App',                // must be a shared scheme
+  //   signing: {
+  //     mode: 'automatic',          // automatic | manual | none (unsigned local build)
+  //     teamId: 'ABCDE12345',
+  //   },
+  // },
+
   version: {
-    strategy: 'timestamp', // manual | timestamp | auto-increment (auto-increment: Phase 4)
+    strategy: 'timestamp', // manual | timestamp | auto-increment
+    // source: 'play',     // auto-increment source: play | appstore | firebase
     // buildNumber: 1,     // required for strategy 'manual'
     // name: '1.0.0',
   },
@@ -37,6 +47,13 @@ export function configTemplate(options: { typed: boolean }): string {
       // serviceAccountRef: 'secret:firebase/service-account', // or set GOOGLE_APPLICATION_CREDENTIALS
       // releaseNotes: 'Default release notes',
     },
+    // appstore: {                   // TestFlight (--platform ios)
+    //   apiKeyRef: 'secret:asc/private-key',
+    //   keyId: 'XYZ123ABCD',
+    //   issuerId: '00000000-0000-0000-0000-000000000000',
+    //   bundleId: 'com.example.app',
+    //   betaGroups: ['QA'],
+    // },
   },
 }`;
 

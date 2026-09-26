@@ -8,7 +8,7 @@ export interface UploadInput {
   cwd: string;
   target: string;
   artifactPath?: string;
-  artifactType?: 'aab' | 'apk';
+  artifactType?: 'aab' | 'apk' | 'ipa';
   releaseNotes?: string;
   dryRun?: boolean;
 }

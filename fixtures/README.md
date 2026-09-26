@@ -83,6 +83,30 @@ export ANDROID_KEYSTORE_PASSWORD=android ANDROID_KEY_PASSWORD=android
 caricamento release --platform android --targets firebase
 ```
 
+## ios-native/
+
+A minimal but **real** SwiftUI app: `CaricamentoFixture.xcodeproj` (one app
+target, iOS 16.0, bundle ID `com.caricamento.fixture`, generated Info.plist
+with `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`,
+`ITSAppUsesNonExemptEncryption = NO`) and a **shared** scheme
+`CaricamentoFixture` in `xcshareddata/xcschemes/`.
+
+`caricamento.config.ts` uses `ios.signing.mode: 'none'`, so the fixture builds
+on any Mac with Xcode — no Apple account, certificate or profile needed:
+
+```bash
+npm run build   # in the repo root
+cd fixtures/ios-native
+node ../../dist/cli/index.js build --platform ios
+# → build/caricamento/ipa/CaricamentoFixture.ipa (unsigned)
+#   build/caricamento/CaricamentoFixture.xcarchive/dSYMs/
+```
+
+The unsigned .ipa cannot be installed on a device or uploaded. For a real
+TestFlight run switch to `mode: 'automatic'` with your `teamId`, change the
+bundle ID to one registered in your App Store Connect account (variant
+`bundleId` or `ios.signing.bundleId`), and uncomment `targets.appstore`.
+
 ## flutter/
 
 A **marker fixture only** — `pubspec.yaml` plus `ios/` and `android/`

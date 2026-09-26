@@ -6,7 +6,7 @@ import { ValidationError } from '../core/errors.js';
 import type { Step } from '../core/pipeline/types.js';
 import type { Builder, ChangelogProvider, Publisher, SigningProvider, VersionCodeProvider } from '../core/ports/index.js';
 import { ProjectDetector } from '../core/project/detector.js';
-import { resolveAndroidVersion } from '../core/versioning/index.js';
+import { resolveVersion } from '../core/versioning/index.js';
 
 export interface VersionOverrides {
   buildNumber?: number;
@@ -39,7 +39,13 @@ export function detectStep(config: CaricamentoConfig, platform: Platform): Step 
   };
 }
 
-export function versionStep(config: CaricamentoConfig, overrides: VersionOverrides, versionCodeProvider?: VersionCodeProvider): Step {
+export function versionStep(
+  config: CaricamentoConfig,
+  overrides: VersionOverrides,
+  versionCodeProvider?: VersionCodeProvider,
+  platform: Platform = 'android',
+): Step {
+  const [codeLabel, nameLabel] = platform === 'ios' ? ['CFBundleVersion', 'CFBundleShortVersionString'] : ['versionCode', 'versionName'];
   return {
     id: 'version',
     title: 'Resolve version',
@@ -48,21 +54,27 @@ export function versionStep(config: CaricamentoConfig, overrides: VersionOverrid
       if (config.version.strategy === 'auto-increment') {
         if (!versionCodeProvider) {
           throw new ValidationError('version.strategy "auto-increment" has no version source', {
-            hint: 'Configure targets.play or targets.firebase in caricamento.config.ts (see version.source).',
+            hint:
+              platform === 'ios'
+                ? 'Configure targets.appstore or targets.firebase in caricamento.config.ts (see version.source).'
+                : 'Configure targets.play or targets.firebase in caricamento.config.ts (see version.source).',
           });
         }
         maxVersionCode = await versionCodeProvider.maxVersionCode();
-        ctx.log('stdout', `Max published versionCode (${versionCodeProvider.name}): ${maxVersionCode ?? '(no releases yet)'}`);
+        ctx.log('stdout', `Max published ${codeLabel} (${versionCodeProvider.name}): ${maxVersionCode ?? '(no builds yet)'}`);
       }
-      const resolved = resolveAndroidVersion({
-        config,
-        buildNumberOverride: overrides.buildNumber,
-        versionNameOverride: overrides.versionName,
-        maxVersionCode,
-      });
+      const resolved = resolveVersion(
+        {
+          config,
+          buildNumberOverride: overrides.buildNumber,
+          versionNameOverride: overrides.versionName,
+          maxVersionCode,
+        },
+        platform,
+      );
       ctx.log(
         'stdout',
-        `versionCode=${resolved.versionCode}${resolved.versionName ? ` versionName=${resolved.versionName}` : ''} (strategy: ${config.version.strategy})`,
+        `${codeLabel}=${resolved.versionCode}${resolved.versionName ? ` ${nameLabel}=${resolved.versionName}` : ''} (strategy: ${config.version.strategy})`,
       );
       return { data: { versionCode: resolved.versionCode, versionName: resolved.versionName } };
     },
@@ -70,11 +82,31 @@ export function versionStep(config: CaricamentoConfig, overrides: VersionOverrid
 }
 
 /**
- * React Native / Flutter keep the Android project in <root>/android;
- * native Android projects are built from the root itself (SPEC §5.3).
+ * React Native / Flutter keep the native projects in <root>/android and
+ * <root>/ios; native projects are built from the root itself (SPEC §5.3).
  */
+export function nativeProjectRoot(cwd: string, projectType: unknown, platform: Platform): string {
+  return projectType === 'react-native' || projectType === 'flutter' ? join(cwd, platform) : cwd;
+}
+
 export function androidProjectRoot(cwd: string, projectType: unknown): string {
-  return projectType === 'react-native' || projectType === 'flutter' ? join(cwd, 'android') : cwd;
+  return nativeProjectRoot(cwd, projectType, 'android');
+}
+
+export function iosBuildStep(builder: Builder): Step {
+  return {
+    id: 'build:ios',
+    title: 'Build iOS IPA',
+    run: async (ctx) => {
+      const artifacts = await builder.build(ctx, {
+        platform: 'ios',
+        versionCode: ctx.data.get('versionCode') as number | undefined,
+        versionName: ctx.data.get('versionName') as string | undefined,
+        projectRoot: nativeProjectRoot(ctx.cwd, ctx.data.get('projectType'), 'ios'),
+      });
+      return { artifacts, data: { artifacts } };
+    },
+  };
 }
 
 export function androidBuildStep(builder: Builder, artifactType: 'aab' | 'apk', switchedFrom?: 'aab' | 'apk'): Step {
@@ -103,17 +135,18 @@ export function verifySigningStep(signing: SigningProvider | null): Step {
     title: 'Verify artifact signature',
     run: async (ctx) => {
       if (!signing) {
-        ctx.log('stdout', 'No android.signing configured — skipping signature verification');
+        ctx.log('stdout', 'No signing configured — skipping signature verification');
         return;
       }
       const artifacts = (ctx.data.get('artifacts') as Artifact[] | undefined) ?? [];
-      const binary = artifacts.find((a) => a.kind === 'apk' || a.kind === 'aab');
+      const binary = findBinary(artifacts);
       if (!binary) {
         if (ctx.dryRun) return;
         throw new ValidationError('No built artifact available for signature verification');
       }
       const result = await signing.verify(ctx, binary);
       if (result.sha256) ctx.log('stdout', `Signer certificate SHA-256: ${result.sha256}`);
+      if (result.identity) ctx.log('stdout', `Signed by: ${result.identity}`);
     },
   };
 }
@@ -140,7 +173,7 @@ export function publishStep(publisher: Publisher, releaseNotes?: string): Step {
     title: `Publish to ${publisher.target}`,
     run: async (ctx) => {
       const artifacts = (ctx.data.get('artifacts') as Artifact[] | undefined) ?? [];
-      const binary = artifacts.find((a) => a.kind === 'apk' || a.kind === 'aab');
+      const binary = findBinary(artifacts);
       if (!binary) {
         if (ctx.dryRun) {
           ctx.log('stdout', `[dry-run] would publish artifact to ${publisher.target}`);
@@ -161,7 +194,12 @@ export function publishStep(publisher: Publisher, releaseNotes?: string): Step {
   };
 }
 
-export function locateArtifactStep(artifactPath: string | undefined, artifactType: 'aab' | 'apk'): Step {
+function findBinary(artifacts: Artifact[]): Artifact | undefined {
+  return artifacts.find((a) => a.kind === 'apk' || a.kind === 'aab' || a.kind === 'ipa');
+}
+
+export function locateArtifactStep(artifactPath: string | undefined, artifactType: 'aab' | 'apk' | 'ipa'): Step {
+  const platform = artifactType === 'ipa' ? 'ios' : 'android';
   return {
     id: 'locate-artifact',
     title: 'Locate artifact',
@@ -173,22 +211,30 @@ export function locateArtifactStep(artifactPath: string | undefined, artifactTyp
           return;
         }
         throw new ValidationError(`No .${artifactType} artifact found`, {
-          hint: 'Pass --artifact <path> or run `caricamento build --platform android` first.',
+          hint: `Pass --artifact <path> or run \`caricamento build --platform ${platform}\` first.`,
         });
       }
       ctx.log('stdout', `Artifact: ${path}`);
-      const artifacts: Artifact[] = [{ kind: artifactType, platform: 'android', path }];
+      const artifacts: Artifact[] = [{ kind: artifactType, platform, path }];
       return { artifacts, data: { artifacts } };
     },
   };
 }
 
-async function findNewestArtifact(root: string, artifactType: 'aab' | 'apk'): Promise<string | null> {
-  // Native Android keeps outputs in <root>/app/...; RN/Flutter in <root>/android/app/...
-  const outputsRoots = [root, join(root, 'android')].map((r) =>
-    join(r, 'app', 'build', 'outputs', artifactType === 'aab' ? 'bundle' : 'apk'),
-  );
+async function findNewestArtifact(root: string, artifactType: 'aab' | 'apk' | 'ipa'): Promise<string | null> {
+  // Native projects keep outputs under <root>; RN/Flutter under <root>/android or <root>/ios.
+  // iOS exports land directly in build/caricamento/ipa (XcodeBuilder).
+  const outputsRoots =
+    artifactType === 'ipa'
+      ? []
+      : [root, join(root, 'android')].map((r) => join(r, 'app', 'build', 'outputs', artifactType === 'aab' ? 'bundle' : 'apk'));
   const candidates: string[] = [];
+  if (artifactType === 'ipa') {
+    for (const dir of [root, join(root, 'ios')].map((r) => join(r, 'build', 'caricamento', 'ipa'))) {
+      const files = await readdir(dir).catch(() => [] as string[]);
+      candidates.push(...files.filter((f) => f.endsWith('.ipa')).map((f) => join(dir, f)));
+    }
+  }
   for (const outputsRoot of outputsRoots) {
     try {
       const variants = await readdir(outputsRoot);

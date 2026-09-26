@@ -90,6 +90,44 @@ describe('resolveVariantConfig (SPEC §5.4)', () => {
   });
 });
 
+describe('resolveVariantConfig — iOS bundleId', () => {
+  const iosBase = () =>
+    configSchema.parse({
+      ios: {
+        project: 'App.xcodeproj',
+        scheme: 'App',
+        signing: { mode: 'automatic', teamId: 'ABCDE12345', bundleId: 'com.example.app' },
+      },
+      variants: {
+        qa: { bundleId: 'com.example.app.qa', applicationId: 'com.example.app.qa' },
+        plain: { flavor: 'dev' },
+      },
+    });
+
+  it('overrides ios.signing.bundleId and keeps the rest of the ios block', () => {
+    const base = iosBase();
+    const merged = resolveVariantConfig(base, 'qa');
+    expect(merged.ios?.signing.bundleId).toBe('com.example.app.qa');
+    expect(merged.ios?.signing.teamId).toBe('ABCDE12345');
+    expect(merged.ios?.scheme).toBe('App');
+    expect(merged.android?.applicationId).toBe('com.example.app.qa');
+    expect(base.ios?.signing.bundleId).toBe('com.example.app');
+  });
+
+  it('inherits the base bundleId when the variant does not set one', () => {
+    expect(resolveVariantConfig(iosBase(), 'plain').ios?.signing.bundleId).toBe('com.example.app');
+  });
+
+  it('ignores a variant bundleId when there is no ios block', () => {
+    const base = configSchema.parse({ variants: { qa: { bundleId: 'com.example.app.qa' } } });
+    expect(resolveVariantConfig(base, 'qa').ios).toBeUndefined();
+  });
+
+  it('rejects an empty bundleId', () => {
+    expect(() => defineConfig({ variants: { qa: { bundleId: '' } } })).toThrow();
+  });
+});
+
 describe('variants schema validation', () => {
   it('parses a config with variants', () => {
     const config = defineConfig({

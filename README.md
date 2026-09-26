@@ -4,8 +4,8 @@ CLI для сборки, подписи и доставки мобильных �
 от исходников до установленной сборки у тестировщиков.
 
 **Статус: MVP** — Android (нативный, React Native CLI, Expo) + Firebase App
-Distribution + Google Play. iOS заложена в архитектуру (см. [SPEC.md](SPEC.md)),
-но пока не реализована.
+Distribution + Google Play; iOS (Xcode, React Native) + App Store Connect /
+TestFlight — см. раздел [iOS](#ios). Архитектура и планы — [SPEC.md](SPEC.md).
 
 ## Возможности
 
@@ -20,15 +20,21 @@ Distribution + Google Play. iOS заложена в архитектуру (см
 - Публикация в Google Play: AAB → трек (internal/alpha/beta/production) →
   mapping.txt для деобфускации — одной командой (чистый REST, без googleapis)
 - Internal App Sharing: загрузка APK/AAB и готовая ссылка на установку
+- Сборка iOS .ipa через `xcodebuild archive` + `-exportArchive`
+  (exportOptions.plist генерируется из конфига, dSYMs собираются рядом);
+  подпись automatic (API-ключ ASC) или manual (временный keychain для CI)
+- App Store Connect / TestFlight: загрузка через Build Uploads API (или
+  altool) → ожидание обработки → «What to Test» → beta-группы
 - **Идемпотентность**: повторный релиз с тем же versionCode не создаёт дублей
-  (Firebase и Play сами находят уже загруженный билд)
+  (Firebase, Play и App Store Connect сами находят уже загруженный билд)
 - Release notes из git: заметки генерируются из коммитов с последнего тега
 - `caricamento apk`: конвертация AAB → universal APK для локальной установки
   (bundletool)
-- Стратегия версионирования `auto-increment`: versionCode = текущий максимум
-  в Play или Firebase App Distribution + 1 (на выбор, `version.source`)
-- Варианты сборки (qa/prod): несколько applicationId из одного проекта без
-  правки его файлов
+- Стратегия версионирования `auto-increment`: versionCode / CFBundleVersion =
+  текущий максимум в Play, App Store Connect или Firebase App Distribution + 1
+  (на выбор, `version.source`)
+- Варианты сборки (qa/prod): несколько applicationId / bundle ID из одного
+  проекта без правки его файлов
 - Автодетекция типа проекта, журнал всех запусков
 - Машиночитаемый вывод `--json` и `--dry-run` для CI
 
@@ -41,6 +47,7 @@ Distribution + Google Play. iOS заложена в архитектуру (см
 | JDK 17 | сборка Android | `java -version` |
 | Android SDK (`ANDROID_HOME`) | build-tools, apksigner | `caricamento doctor` |
 | Gradle wrapper в проекте | сборка | `caricamento doctor` |
+| Xcode (полный, не только CLT) | сборка iOS | `xcodebuild -version`, `caricamento doctor` |
 
 ## Установка
 
@@ -268,6 +275,195 @@ caricamento upload myapp --target playsharing --artifact app-release.aab
 **Разово в Play Console** (иначе API вернёт `TOS_NOT_ACCEPTED`):
 Setup → Internal app sharing → включить и принять условия сервиса.
 
+## iOS
+
+Сборка `.ipa` через Xcode и доставка в TestFlight. Поддерживаются нативные
+Xcode-проекты и React Native (проект в `ios/`).
+
+### Требования
+
+| Что | Зачем | Нужен платный аккаунт ($99/год)? |
+|---|---|---|
+| macOS + Xcode (полный, `sudo xcode-select -s /Applications/Xcode.app`) | `xcodebuild`, `security`, `codesign` | нет |
+| Неподписанная сборка (`signing.mode: 'none'`) | проверить, что проект собирается | **нет** |
+| Сертификат Apple Distribution + App ID | подписанная .ipa | да (Apple Developer Program) |
+| Запись приложения в App Store Connect | TestFlight, auto-increment из ASC | да |
+| API-ключ App Store Connect (`.p8`) | automatic signing без логина в Xcode, загрузка, TestFlight | да |
+| CocoaPods (`pod install` в `ios/`) | React Native | нет (выполняется вами, caricamento его не запускает) |
+
+**Что работает локально без аккаунта:** `build --platform ios` в режиме
+`none` (archive без подписи → неподписанная .ipa + dSYMs), `doctor`,
+`detect`, `--dry-run` любых команд. Всё, что подписывает или ходит в App
+Store Connect, требует платного аккаунта.
+
+### API-ключ App Store Connect
+
+1. [appstoreconnect.apple.com](https://appstoreconnect.apple.com) → **Users
+   and Access** → **Integrations** → **App Store Connect API** → вкладка
+   **Team Keys** → **Generate API Key** (роль **App Manager** — хватает для
+   загрузки и TestFlight; для automatic signing с созданием профилей может
+   понадобиться **Admin**).
+2. Скачайте `AuthKey_<KEY_ID>.p8` — скачать можно только один раз.
+3. Запишите **Key ID** (в строке ключа) и **Issuer ID** (над таблицей).
+4. Сохраните ключ:
+
+```bash
+caricamento secrets set asc/private-key   # путь к AuthKey_XXXX.p8 (или сам PEM)
+```
+
+### Конфигурация — все опции
+
+```typescript
+export default {
+  project: { type: 'ios' },             // или 'react-native' / 'auto'
+
+  ios: {
+    project: 'App.xcodeproj',           // РОВНО одно из project / workspace
+    // workspace: 'App.xcworkspace',    // CocoaPods / RN (путь от ios/ или от корня)
+    scheme: 'App',                      // схема должна быть Shared
+    configuration: 'Release',
+    destination: 'generic/platform=iOS',
+    signing: {
+      mode: 'automatic',                // automatic | manual | none
+      method: 'app-store',              // app-store | ad-hoc | development | enterprise
+      teamId: 'ABCDE12345',
+      bundleId: 'com.example.app',      // опционально: PRODUCT_BUNDLE_IDENTIFIER
+      // automatic — ключ ASC (если не задан, берётся из targets.appstore,
+      // а без него — аккаунты, залогиненные в Xcode):
+      apiKeyRef: 'secret:asc/private-key',
+      keyId: 'XYZ123ABCD',
+      issuerId: '69a6de7e-...',
+      // manual:
+      certificateRef: 'secret:ios/certificate',          // .p12: путь или base64
+      certificatePasswordRef: 'secret:ios/certificate-password',
+      profileRefs: ['secret:ios/profile-app'],           // .mobileprovision: путь или base64
+    },
+  },
+
+  version: { strategy: 'auto-increment', name: '1.4.0' }, // source по умолчанию — appstore
+
+  targets: {
+    appstore: {
+      apiKeyRef: 'secret:asc/private-key',
+      keyId: 'XYZ123ABCD',
+      issuerId: '69a6de7e-...',
+      bundleId: 'com.example.app',      // как в App Store Connect
+      distributeTo: 'testflight',       // 'appstore' — roadmap
+      betaGroups: ['QA'],
+      whatToTest: 'Проверьте экран логина',
+      locale: 'en-US',
+      upload: 'api',                    // api | altool
+      processingTimeoutMinutes: 30,
+    },
+  },
+};
+```
+
+**Блок `ios`:**
+
+| Поле | Тип | Дефолт | Описание |
+|---|---|---|---|
+| `project` / `workspace` | string | — | **Ровно одно из двух.** Путь резолвится от `<root>/ios` (RN) или корня проекта |
+| `scheme` | string | — | **Обязательно.** Схема должна быть Shared (`xcshareddata/xcschemes`) |
+| `configuration` | string | `Release` | Build configuration |
+| `destination` | string | `generic/platform=iOS` | `-destination` для archive |
+| `signing.mode` | `automatic` \| `manual` \| `none` | `automatic` | См. «Режимы подписи» |
+| `signing.method` | `app-store` \| `ad-hoc` \| `development` \| `enterprise` | `app-store` | Метод экспорта; в plist пишутся актуальные имена Xcode (`app-store-connect`, `release-testing`, `debugging`, `enterprise`) |
+| `signing.teamId` | string | — | `DEVELOPMENT_TEAM` и `teamID` в exportOptions; сверяется с подписью готовой .ipa |
+| `signing.bundleId` | string | — | Переопределение `PRODUCT_BUNDLE_IDENTIFIER` (обычно — через вариант) |
+| `signing.apiKeyRef` / `keyId` / `issuerId` | secret / string | — | automatic: API-ключ ASC. Задаются только вместе |
+| `signing.certificateRef` | `secret:<name>` | — | manual: `.p12` (путь или base64). Без него — identities из вашего keychain |
+| `signing.certificatePasswordRef` | `secret:<name>` | — | Обязателен вместе с `certificateRef` |
+| `signing.profileRefs` | `secret:<name>[]` | — | **Обязательно для manual.** `.mobileprovision` (путь или base64) |
+
+**Блок `targets.appstore`:**
+
+| Поле | Тип | Дефолт | Описание |
+|---|---|---|---|
+| `apiKeyRef` | `secret:<name>` | — | **Обязательно.** `.p8` (путь или PEM) |
+| `keyId` / `issuerId` | string | — | **Обязательно.** Из App Store Connect → Integrations |
+| `bundleId` | string | — | **Обязательно.** Bundle ID приложения в ASC; сверяется с Info.plist .ipa |
+| `distributeTo` | `testflight` \| `appstore` | `testflight` | `appstore` (сабмит на ревью) — roadmap, сейчас ошибка валидации |
+| `betaGroups` | string[] | `[]` | Имена TestFlight-групп; проверяются **до** загрузки |
+| `whatToTest` | string | — | «What to Test»; перекрывается `--release-notes`, иначе git changelog |
+| `locale` | string | `en-US` | Локаль «What to Test» |
+| `upload` | `api` \| `altool` | `api` | Механизм загрузки бинаря |
+| `processingTimeoutMinutes` | number | `30` | Сколько ждать обработки билда в ASC |
+
+### Режимы подписи
+
+- **`automatic`** (по умолчанию) — `xcodebuild -allowProvisioningUpdates`
+  с `-authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID`:
+  Xcode сам создаёт сертификаты/профили через API. `.p8` пишется во
+  временный файл (0600) и удаляется после сборки. Удобно локально и для
+  старта; без ключа используются аккаунты из Xcode → Settings → Accounts.
+- **`manual`** (для CI) — `.p12` импортируется во **временный keychain**
+  (`security create-keychain` → `import` → `set-key-partition-list` →
+  добавление в search list), профили декодируются (`security cms -D`),
+  проверяются (срок, bundle ID) и копируются в каталоги Provisioning
+  Profiles. В exportOptions — `provisioningProfiles` (bundle ID → UUID) и
+  SHA-1 сертификата. После сборки — всё откатывается: search list
+  восстанавливается, keychain и добавленные профили удаляются.
+  В CI секреты удобно передавать base64 через env:
+  `IOS_CERTIFICATE=$(base64 -i dist.p12)`, `IOS_PROFILE_APP=$(base64 -i App.mobileprovision)`.
+- **`none`** — без подписи (`CODE_SIGNING_ALLOWED=NO`), `.app` упаковывается
+  в неподписанный .ipa. Только для проверки сборки; `release` с
+  `appstore` в этом режиме отклоняется.
+
+После экспорта подпись проверяется: `codesign --verify --deep --strict` и
+сверка TeamIdentifier с `signing.teamId`.
+
+### Версия и bundle ID без правки проекта
+
+`MARKETING_VERSION` (versionName) и `CURRENT_PROJECT_VERSION` (build number)
+передаются в `xcodebuild archive` как build settings. Info.plist проекта
+должен ссылаться на `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` —
+это дефолт шаблонов Xcode 13+ и RN; после архива caricamento проверяет
+значения в архиве и падает с подсказкой, если они не применились.
+Bundle ID из `signing.bundleId` / варианта передаётся как
+`PRODUCT_BUNDLE_IDENTIFIER` (ограничение: применяется ко **всем** таргетам
+схемы — для приложений с extensions используйте build configurations
+проекта).
+
+### Поток TestFlight
+
+`caricamento release --platform ios --targets appstore` (алиас `asc`):
+
+1. сборка и подпись .ipa, проверка подписи;
+2. поиск приложения по `bundleId` и TestFlight-групп (опечатка в группе —
+   ошибка сразу, а не после получаса ожидания);
+3. если билд с таким `CFBundleVersion` уже есть в ASC — загрузка
+   пропускается (повторный запуск безопасен);
+4. загрузка: Build Uploads API (`POST /v1/buildUploads` →
+   `POST /v1/buildUploadFiles` → PUT частей по presigned URL →
+   `PATCH /v1/buildUploadFiles/{id}`), либо `xcrun altool --upload-app`
+   при `upload: 'altool'`;
+5. ожидание обработки до `VALID` (опрос каждые 30 с, прогресс в логе,
+   таймаут `processingTimeoutMinutes`); `FAILED`/`INVALID` — ошибка с
+   деталями Apple;
+6. «What to Test» (`whatToTest` / `--release-notes` / git changelog);
+7. добавление билда в `betaGroups`.
+
+Загрузить готовый .ipa без сборки:
+
+```bash
+caricamento upload --target appstore --artifact build/caricamento/ipa/App.ipa
+```
+
+**Пока не поддерживается (roadmap):** сабмит на App Store review
+(`distributeTo: 'appstore'`), отправка на Beta App Review для внешних групп
+(билд добавляется в группу, ревью запускается вручную в ASC), декларация
+export compliance через API — добавьте `ITSAppUsesNonExemptEncryption = NO`
+в Info.plist, иначе TestFlight покажет «Missing Compliance».
+
+### Быстрая проверка без аккаунта
+
+```bash
+cd fixtures/ios-native
+node ../../dist/cli/index.js doctor
+node ../../dist/cli/index.js build --platform ios   # → build/caricamento/ipa/CaricamentoFixture.ipa
+```
+
 ## Конфигурация
 
 `caricamento.config.ts` в корне проекта (создаётся через `caricamento init`):
@@ -292,7 +488,9 @@ export default {
   },
 
   version: { strategy: 'timestamp' }, // manual | timestamp | auto-increment
-                                      // (+ source: 'play' | 'firebase')
+                                      // (+ source: 'play' | 'appstore' | 'firebase')
+
+  // ios: { ... }                     // см. раздел «iOS»
 
   targets: {
     firebase: {
@@ -312,19 +510,25 @@ export default {
 
 ### Версионирование
 
-| Стратегия | versionCode | Источник |
-|---|---|---|
-| `manual` | `version.buildNumber` или флаг `--build <n>` | — |
-| `timestamp` | Unix-секунды | — |
-| `auto-increment` | текущий максимум + 1 | Play API или Firebase |
+| Стратегия | Android versionCode | iOS CFBundleVersion | Источник |
+|---|---|---|---|
+| `manual` | `version.buildNumber` или `--build <n>` | то же | — |
+| `timestamp` | Unix-секунды | `YYYYMMDDHHMM` (UTC) | — |
+| `auto-increment` | текущий максимум + 1 | текущий максимум + 1 | Play, App Store Connect или Firebase |
 
 Для `auto-increment` источник выбирается так: явный `version.source`
-(`'play'` / `'firebase'`), иначе Play если настроен `targets.play`, иначе
-Firebase. Play — источник истины (все треки); Firebase видит только сборки,
-загруженные в App Distribution (max `buildVersion` среди релизов).
+(`'play'` / `'appstore'` / `'firebase'`) — применяется к любой платформе;
+иначе по приоритету **play > appstore > firebase** среди настроенных
+таргетов, родных для собираемой платформы: `targets.play` — только для
+Android, `targets.appstore` — только для iOS, `targets.firebase` — для обеих.
+Play — источник истины (все треки). `appstore` — max числового
+`CFBundleVersion` среди всех билдов приложения в App Store Connect
+(нечисловые вида `1.2.3` игнорируются; билдов нет — первый будет `1`).
+Firebase видит только сборки, загруженные в App Distribution (max
+`buildVersion` среди релизов).
 
-`versionName` всегда вручную: `version.name` в конфиге или `--version 1.0.4`.
-Флаги CLI перекрывают конфиг.
+`versionName` / `CFBundleShortVersionString` всегда вручную: `version.name`
+в конфиге или `--version 1.0.4`. Флаги CLI перекрывают конфиг.
 
 **Совет: versionName из package.json.** Конфиг — исполняемый TypeScript,
 поэтому версию можно читать прямо из проекта. Перед загрузкой конфига
@@ -401,6 +605,10 @@ caricamento build --variant prod --artifact-type aab
 Правила слияния (намеренно простые, без deep merge):
 
 - `applicationId` и `flavor` из варианта дополняют блок `android`;
+- `bundleId` из варианта перекрывает `ios.signing.bundleId` (передаётся в
+  `xcodebuild` как `PRODUCT_BUNDLE_IDENTIFIER`; игнорируется, если блока
+  `ios` нет). Для TestFlight у варианта обычно свой `targets.appstore` с тем
+  же `bundleId`;
 - `targets` варианта **заменяют** базовые целиком — вариант публикуется
   ровно туда, куда указано;
 - `version` варианта заменяет базовый блок целиком.
@@ -542,9 +750,10 @@ bundletool.jar` (скачивается один раз с GitHub-релиза g
 | Тип | Детекция | Особенности |
 |---|---|---|
 | Нативный Android | `settings.gradle` | gradlew в корне |
-| React Native CLI | `package.json` + `android/` | сборка в `android/`, нужен `npm install` |
+| Нативный iOS | `*.xcodeproj` / `*.xcworkspace` | `--platform ios`, блок `ios` в конфиге |
+| React Native CLI | `package.json` + `android/` | сборка в `android/` / `ios/`, нужен `npm install` (+ `pod install` для iOS) |
 | Expo (bare) | то же + `app.json` | `expo prebuild` один раз; `--clean` безопасен |
-| Flutter | `pubspec.yaml` | детекция есть, сборка — в roadmap |
+| Flutter | `pubspec.yaml` | детекция есть, сборка — в roadmap (iOS: вручную `flutter build ios --config-only`, затем `ios.workspace: 'Runner.xcworkspace'`) |
 
 Expo в managed workflow (без `android/`): пока нужно один раз выполнить
 `npx expo prebuild --platform android`. Автоматический prebuild как шаг
@@ -569,7 +778,8 @@ caricamento projects list
 Цепочка резолва конфига: `--config` → конфиг из записи реестра →
 `~/.caricamento/projects/<name>.config.ts` → `caricamento.config.ts` в проекте.
 `--platform` по умолчанию `android`, `--targets` — все сконфигурированные
-таргеты. Секреты — через env vars или Keychain, `.env` в проекте не нужен.
+таргеты, применимые к платформе (для iOS — `appstore` и `firebase`, для
+Android — `firebase`, `play`, `playsharing`). Секреты — через env vars или Keychain, `.env` в проекте не нужен.
 
 ## Команды
 
@@ -580,10 +790,12 @@ caricamento secrets set|get|delete|list   # секреты в macOS Keychain
 caricamento doctor [project]              # проверка окружения и кредов
 caricamento detect [project]              # показать дескриптор проекта
 
-caricamento build   [project] [--platform android] [--artifact-type apk|aab]
+caricamento build   [project] [--platform android|ios] [--artifact-type apk|aab]
                     [--variant qa|all] [--build <n>] [--version <name>]
-caricamento upload  [project] --target firebase|play|playsharing [--artifact <path>] [--release-notes <text>]
-caricamento release [project] [--targets firebase,play] [--variant qa|all] [...]
+caricamento upload  [project] --target firebase|play|playsharing|appstore [--artifact <path>]
+                    [--platform android|ios] [--release-notes <text>]
+caricamento release [project] [--platform android|ios] [--targets firebase,play|appstore]
+                    [--variant qa|all] [...]
 caricamento apk     [project] [--artifact <aab>] [--out <apk>]   # AAB → universal APK
 
 caricamento runs                          # история запусков
@@ -620,29 +832,40 @@ caricamento release --platform android --targets firebase --json
 | Play `401/403` | Service account не приглашён в Play Console (Users and permissions) или без прав на релизы |
 | Play `404` | `targets.play.packageName` не совпадает с существующим приложением в Play Console |
 | Play commit: `Version code ... has already been used` | versionCode не возрастает — используйте `version.strategy: 'auto-increment'` |
-| `auto-increment has no version source` | Настройте `targets.play` или `targets.firebase`, либо смените стратегию/источник (`version.source`) |
+| `auto-increment has no version source` | Настройте `targets.play` (Android), `targets.appstore` (iOS) или `targets.firebase`, либо смените стратегию/источник (`version.source`) |
 | `Signer certificate SHA-256` не совпадает | Подписали не тем keystore — сверьте `expectedCertificateSha256` |
 | Play: `Target SDK of artifact is too low: N` | N — это versionCode артефакта, а не SDK. С 31.08.2026 обновления обязаны таргетить API 36 — поднимите `targetSdkVersion` |
 | Play: `APK ... not allowed` / просит AAB | Play принимает только AAB — `release` сам переключает apk→aab, для `upload` передайте `--artifact-type aab` |
+| iOS: `xcodebuild not found` / `requires Xcode` | Установлены только Command Line Tools — `sudo xcode-select -s /Applications/Xcode.app` |
+| iOS: `scheme ... is not currently configured` | Схема не Shared: Xcode → Product → Scheme → Manage Schemes → галочка Shared |
+| iOS: `No profiles for '...' were found` / signing-ошибки (`SigningError`) | automatic: проверьте `teamId` и права API-ключа; manual: профиль не совпадает с bundle ID или сертификатом |
+| iOS: версия в архиве не совпадает | Info.plist не использует `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` — замените жёсткие значения на эти переменные |
+| ASC `401` | Неверный `keyId`/`issuerId` или ключ отозван (Users and Access → Integrations) |
+| ASC `No app with bundle ID` | Запись приложения в App Store Connect не создана или `targets.appstore.bundleId` не совпадает |
+| ASC: upload `FAILED` / `already been used` | `CFBundleVersion` уже загружался — используйте `version.strategy: 'auto-increment'` |
+| TestFlight: «Missing Compliance» | Добавьте `ITSAppUsesNonExemptEncryption = NO` в Info.plist (или ответьте в ASC) |
 
 ## Разработка
 
 ```bash
 npm run build       # tsup → dist/
-npm test            # vitest, 122 теста (Android SDK / Firebase / Play не нужны)
+npm test            # vitest, 190 тестов (Android SDK / Xcode / Firebase / Play / ASC не нужны)
 npm run typecheck
 npm run lint        # eslint + правила границ слоёв (SPEC §3.1)
 ```
 
 `fixtures/` — реальные проекты для ручных end-to-end прогонов:
 `android-native` (properties-инжекция), `react-native-cli` и
-`react-native-expo` (init-script), `flutter` (маркер для детектора).
+`react-native-expo` (init-script), `ios-native` (SwiftUI, собирается без
+аккаунта в режиме `none`), `flutter` (маркер для детектора).
 Подробности — [fixtures/README.md](fixtures/README.md).
 
 ## Roadmap
 
-- **Phase 3** — iOS: `xcodebuild`, подпись (automatic/manual), App Store
-  Connect + TestFlight
+- ~~**Phase 3** — iOS~~ — ✅ реализовано: `xcodebuild`, подпись
+  (automatic/manual/none), App Store Connect + TestFlight, auto-increment
+  из ASC. Дальше: сабмит на App Store review, Beta App Review для внешних
+  групп, автоматический `pod install`
 - ~~**Phase 4** — Google Play~~ — ✅ реализовано: edits flow, треки,
   auto-increment versionCode
 - **Phase 5** — идемпотентность, ретраи, manual signing для CI

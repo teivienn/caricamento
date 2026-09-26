@@ -3,28 +3,25 @@ import { ValidationError } from '../../core/errors.js';
 import { JsonProjectRegistry } from '../../infra/system/registry.js';
 import { renderEvents } from '../render/renderer.js';
 import type { GlobalOptions } from '../options.js';
+import { parsePlatform } from '../platform.js';
 import { resolveTarget } from '../resolve-target.js';
 import { runWithVariants } from './run-variants.js';
 
 export function buildCommand(globals: () => GlobalOptions): Command {
   return new Command('build')
-    .description('Build a signed Android artifact')
+    .description('Build a signed artifact (Android APK/AAB or iOS IPA)')
     .argument('[project]', 'registered project name; default: current directory')
-    .option('--platform <platform>', 'target platform', 'android')
-    .option('--artifact-type <type>', 'apk or aab', 'apk')
+    .option('--platform <platform>', 'target platform: android | ios', 'android')
+    .option('--artifact-type <type>', 'apk or aab (Android only; iOS always builds an ipa)', 'apk')
     .option('--variant <name>', 'build variant from the config (`all` runs every variant sequentially)')
-    .option('--build <number>', 'versionCode override (manual strategy)', parseIntOption)
-    .option('--version <name>', 'versionName override')
+    .option('--build <number>', 'versionCode / CFBundleVersion override (manual strategy)', parseIntOption)
+    .option('--version <name>', 'versionName / CFBundleShortVersionString override')
     .action(async (project: string | undefined, opts: { platform: string; artifactType: string; variant?: string; build?: number; version?: string }) => {
       const global = globals();
-      if (opts.platform !== 'android') {
-        throw new ValidationError(`Platform "${opts.platform}" is not supported yet`, {
-          hint: 'This milestone supports Android only. iOS lands in Phase 3.',
-        });
-      }
+      const platform = parsePlatform(opts.platform);
       const target = await resolveTarget(project, global.config, new JsonProjectRegistry());
       await runWithVariants(
-        { cwd: target.cwd, configPath: target.configPath, envFiles: target.envFiles },
+        { cwd: target.cwd, configPath: target.configPath, envFiles: target.envFiles, platform },
         opts.variant,
         (container) =>
           renderEvents(

@@ -32,14 +32,17 @@ export interface SecretResolver {
 
 export interface BuildRequest {
   platform: Platform;
-  /** 'aab' | 'apk' for Android; ignored elsewhere for now. */
+  /** 'aab' | 'apk' for Android; iOS always produces an .ipa. */
   artifactType?: 'aab' | 'apk';
+  /** Android versionCode / iOS CFBundleVersion (CURRENT_PROJECT_VERSION). */
   versionCode?: number;
+  /** Android versionName / iOS CFBundleShortVersionString (MARKETING_VERSION). */
   versionName?: string;
   /**
-   * Directory containing the native build entrypoint (gradlew for Android).
-   * Differs from the run cwd for React Native / Flutter projects, where the
-   * Android project lives in <root>/android (SPEC §5.3).
+   * Directory containing the native project (gradlew for Android, the
+   * .xcodeproj/.xcworkspace for iOS). Differs from the run cwd for React
+   * Native / Flutter projects, where it is <root>/android or <root>/ios
+   * (SPEC §5.3).
    */
   projectRoot?: string;
 }
@@ -96,6 +99,8 @@ export interface Publisher {
 export interface SigningVerification {
   verified: boolean;
   sha256?: string;
+  /** Signing identity (iOS codesign Authority), when known. */
+  identity?: string;
 }
 
 export interface SigningProvider {
@@ -103,12 +108,12 @@ export interface SigningProvider {
 }
 
 /**
- * Source of the highest published Android versionCode, backing the
- * `auto-increment` version strategy (SPEC §8). Returns null when the app
- * has no published releases yet.
+ * Source of the highest published build number (Android versionCode / iOS
+ * CFBundleVersion), backing the `auto-increment` version strategy (SPEC §8).
+ * Returns null when the app has no published builds yet.
  */
 export interface VersionCodeProvider {
-  /** Short source label for logs, e.g. 'play' | 'firebase'. */
+  /** Short source label for logs, e.g. 'play' | 'appstore' | 'firebase'. */
   readonly name: string;
   maxVersionCode(): Promise<number | null>;
 }
