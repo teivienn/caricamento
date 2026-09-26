@@ -58,6 +58,9 @@ npm run lint        # eslint incl. layer-boundary rules
 npm run build       # tsup -> dist/
 ```
 
+CI (`.github/workflows/ci.yml`) runs lint, typecheck and `npm run test:coverage`
+on PRs and never builds.
+
 HTTP clients are tested with `msw`; add/adjust handlers in the matching
 `tests/*.test.ts` when you touch a publisher. Manual e2e: `npm run build`, then
 `node ../../dist/cli/index.js <cmd>` from inside a fixture.

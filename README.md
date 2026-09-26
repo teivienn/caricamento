@@ -136,10 +136,17 @@ caricamento release --platform android --targets firebase --json
 ```bash
 npm install
 npm test            # vitest; no Android SDK, Xcode or store accounts needed
+npm run test:coverage  # same, plus v8 coverage in coverage/
 npm run typecheck
 npm run lint        # eslint, including architecture layer-boundary rules
 npm run build       # tsup -> dist/
 ```
+
+GitHub Actions:
+
+- `.github/workflows/ci.yml` runs lint, typecheck and unit tests on every pull
+  request to `main` (Node 22 and 24; no build). Coverage totals appear in the job
+  summary and the full report is uploaded as the `coverage` artifact.
 
 `fixtures/` contains real projects for manual end-to-end runs — see
 [fixtures/README.md](fixtures/README.md).
