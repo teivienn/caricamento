@@ -193,5 +193,7 @@ first version published to npm.
 
 ## Pull requests
 
-Open the pull request against `main`. Describe what changed and how you checked
-it. Do not force-push `main` or rewrite published history.
+Open the pull request against `main`. GitHub fills the description from
+[`.github/pull_request_template.md`](.github/pull_request_template.md): a short
+summary, how you checked the change, and whether docs or `CHANGELOG.md` need an
+update. Do not force-push `main` or rewrite published history.
