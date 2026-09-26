@@ -1,7 +1,38 @@
 {
   "name": "caricamento",
   "version": "0.1.0",
-  "description": "CLI to build, sign and distribute mobile app releases (Android + Firebase App Distribution MVP)",
+  "description": "CLI that builds, signs and publishes Android and iOS releases to Firebase App Distribution, Google Play and TestFlight in one command.",
+  "keywords": [
+    "cli",
+    "mobile",
+    "mobile-release",
+    "release-automation",
+    "continuous-delivery",
+    "android",
+    "ios",
+    "react-native",
+    "expo",
+    "gradle",
+    "xcode",
+    "code-signing",
+    "firebase",
+    "firebase-app-distribution",
+    "google-play",
+    "play-console",
+    "internal-app-sharing",
+    "testflight",
+    "app-store-connect",
+    "fastlane-alternative"
+  ],
+  "homepage": "https://github.com/teivienn/caricamento#readme",
+  "bugs": {
+    "url": "https://github.com/teivienn/caricamento/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/teivienn/caricamento.git"
+  },
+  "author": "teivienn <teivienn@gmail.com>",
   "license": "MIT",
   "type": "module",
   "bin": {
