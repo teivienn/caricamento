@@ -19,8 +19,16 @@ Distribution + Google Play. iOS заложена в архитектуру (см
   группам тестеров (чистый REST, без firebase-tools)
 - Публикация в Google Play: AAB → трек (internal/alpha/beta/production) →
   mapping.txt для деобфускации — одной командой (чистый REST, без googleapis)
+- Internal App Sharing: загрузка APK/AAB и готовая ссылка на установку
+- **Идемпотентность**: повторный релиз с тем же versionCode не создаёт дублей
+  (Firebase и Play сами находят уже загруженный билд)
+- Release notes из git: заметки генерируются из коммитов с последнего тега
+- `caricamento apk`: конвертация AAB → universal APK для локальной установки
+  (bundletool)
 - Стратегия версионирования `auto-increment`: versionCode = текущий максимум
   в Play или Firebase App Distribution + 1 (на выбор, `version.source`)
+- Варианты сборки (qa/prod): несколько applicationId из одного проекта без
+  правки его файлов
 - Автодетекция типа проекта, журнал всех запусков
 - Машиночитаемый вывод `--json` и `--dry-run` для CI
 
@@ -230,6 +238,36 @@ caricamento release myapp --targets firebase,play
 - Первый релиз на production-трек тоже обычно делается вручную; API удобен
   для internal/alpha/beta.
 
+## Internal App Sharing (таргет `playsharing`)
+
+Быстрый способ раздать сборку по ссылке, без треков и групп тестеров:
+загрузка APK или AAB в Play Internal App Sharing, в ответ — `downloadUrl`,
+по которому сборка ставится через Play Store (у получателя должен быть
+включён internal app sharing и разрешённый Google-аккаунт).
+
+Используется тот же service account, что и для Play (scope
+`androidpublisher`). Конфиг:
+
+```typescript
+targets: {
+  playsharing: {
+    serviceAccountRef: 'secret:play/service-account',
+    packageName: 'com.example.app',
+  },
+},
+```
+
+```bash
+caricamento release myapp --targets playsharing          # сборка + ссылка
+caricamento upload myapp --target playsharing --artifact app-release.aab
+```
+
+Ссылка печатается в логе шага и доступна в `PublishResult.url` (в `--json`
+выводе — поле `url`).
+
+**Разово в Play Console** (иначе API вернёт `TOS_NOT_ACCEPTED`):
+Setup → Internal app sharing → включить и принять условия сервиса.
+
 ## Конфигурация
 
 `caricamento.config.ts` в корне проекта (создаётся через `caricamento init`):
@@ -385,6 +423,25 @@ caricamento build --variant prod --artifact-type aab
 приложение в Firebase (свой `appIdAndroid`) и/или в Play Console (свой
 `packageName`).
 
+### Release notes из git
+
+Заметки к релизу можно не писать руками — блок `changelog` генерирует их из
+истории коммитов целевого проекта:
+
+```typescript
+export default {
+  // ...
+  changelog: { source: 'git', maxCommits: 20 },  // maxCommits — fallback, если в репо нет тегов
+};
+```
+
+Берутся коммиты с последнего git-тега (`git describe --tags --abbrev=0`),
+без merge-коммитов, по строке `- <subject>` на коммит. Если тегов нет —
+последние `maxCommits` коммитов. Приоритет источников заметок:
+флаг `--release-notes` → `releaseNotes` в конфиге таргета → git changelog.
+Шаг запускается, только когда заметки кому-то нужны (хотя бы у одного
+таргета нет своих).
+
 ### Секреты
 
 В конфиге — только ссылки `secret:<name>`, никогда сами значения.
@@ -448,6 +505,38 @@ Keystore и пароли храните вне репозитория (или з
 Play в будущем рекомендуется Play App Signing — тогда этот ключ будет
 только upload-ключом.
 
+## Повторные запуски (идемпотентность)
+
+Повторный `release` с тем же versionCode не создаёт дублей:
+
+- **Firebase**: перед загрузкой проверяется `releases.list` — если релиз с
+  таким `buildVersion` уже есть, upload и установка release notes
+  пропускаются (в логе «already uploaded»), а рассылка группам выполняется
+  как обычно (она идемпотентна).
+- **Play**: versionCode нельзя загрузить дважды, поэтому перед открытием
+  edit-сессии делается пробный запрос треков. Код уже на целевом треке →
+  «already published», ничего не коммитится. Код есть на другом треке →
+  коммитится только `tracks.update` с существующим кодом — это даёт базовый
+  промоушен билда между треками без пересборки.
+
+Флага `--force` нет: чтобы перезалить билд, поднимите versionCode
+(с `auto-increment` это происходит само).
+
+## Локальная установка: AAB → APK
+
+```bash
+caricamento apk myapp                          # newest AAB из build outputs
+caricamento apk myapp --artifact app-release.aab --out /tmp/app.apk
+```
+
+Конвертирует AAB в universal APK через bundletool (`build-apks
+--mode=universal`) и подписывает ключом из `android.signing` (без него —
+debug-подпись bundletool). Резолв bundletool по цепочке:
+`$BUNDLETOOL_PATH` → `bundletool` в PATH → `~/.caricamento/tools/
+bundletool.jar` (скачивается один раз с GitHub-релиза google/bundletool и
+кэшируется) → ошибка с подсказкой `brew install bundletool`.
+Итоговый путь печатается в логе; дальше `adb install <path>`.
+
 ## Поддерживаемые проекты
 
 | Тип | Детекция | Особенности |
@@ -493,8 +582,9 @@ caricamento detect [project]              # показать дескрипто�
 
 caricamento build   [project] [--platform android] [--artifact-type apk|aab]
                     [--variant qa|all] [--build <n>] [--version <name>]
-caricamento upload  [project] --target firebase|play [--artifact <path>] [--release-notes <text>]
+caricamento upload  [project] --target firebase|play|playsharing [--artifact <path>] [--release-notes <text>]
 caricamento release [project] [--targets firebase,play] [--variant qa|all] [...]
+caricamento apk     [project] [--artifact <aab>] [--out <apk>]   # AAB → universal APK
 
 caricamento runs                          # история запусков
 caricamento status <runId>                # сводка по запуску
@@ -539,7 +629,7 @@ caricamento release --platform android --targets firebase --json
 
 ```bash
 npm run build       # tsup → dist/
-npm test            # vitest, 96 тестов (Android SDK / Firebase / Play не нужны)
+npm test            # vitest, 122 теста (Android SDK / Firebase / Play не нужны)
 npm run typecheck
 npm run lint        # eslint + правила границ слоёв (SPEC §3.1)
 ```

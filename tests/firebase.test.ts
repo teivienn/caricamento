@@ -18,6 +18,7 @@ interface RecordedRequest {
 const recorded: RecordedRequest[] = [];
 let pollCount = 0;
 let failUpload = false;
+let existingReleases: Array<{ name?: string; buildVersion?: string }> = [];
 
 const RELEASE_NAME = 'projects/1/apps/1:1:android:abc/releases/rel-1';
 const OPERATION_NAME = 'projects/1/apps/1:1:android:abc/operations/op-1';
@@ -28,6 +29,9 @@ const server = setupServer(
     const body = request.method === 'GET' ? undefined : await request.json().catch(() => undefined);
     recorded.push({ method: request.method, url: url.toString(), body, authorization: request.headers.get('authorization') });
 
+    if (request.method === 'GET' && url.pathname.endsWith('/releases')) {
+      return HttpResponse.json({ releases: existingReleases });
+    }
     if (request.method === 'POST' && url.pathname.endsWith('/releases:upload')) {
       if (failUpload) {
         return HttpResponse.json({ error: { message: 'forbidden' } }, { status: 403 });
@@ -69,6 +73,7 @@ describe('FirebasePublisher (SPEC §7.3)', () => {
     recorded.length = 0;
     pollCount = 0;
     failUpload = false;
+    existingReleases = [];
     dir = await mkdtemp(join(tmpdir(), 'caricamento-firebase-'));
     artifactPath = join(dir, 'app-release.apk');
     await writeFile(artifactPath, 'fake-apk-bytes');
@@ -143,5 +148,34 @@ describe('FirebasePublisher (SPEC §7.3)', () => {
     });
     expect(result.target).toBe('firebase');
     expect(recorded).toHaveLength(0);
+  });
+
+  it('skips upload and notes but still distributes when the versionCode was already uploaded (SPEC §9)', async () => {
+    existingReleases = [{ name: RELEASE_NAME, buildVersion: '42' }];
+
+    const result = await makePublisher().publish(ctx, {
+      artifact: { kind: 'apk', platform: 'android', path: artifactPath },
+      versionCode: 42,
+      releaseNotes: 'ignored on re-run',
+    });
+
+    expect(result.releaseName).toBe(RELEASE_NAME);
+    const methods = recorded.map((r) => `${r.method} ${new URL(r.url).pathname}`);
+    // releases.list probe, then distribute — no upload, no poll, no PATCH
+    expect(methods).toEqual([
+      `GET /v1/projects/1/apps/1:1:android:abc/releases`,
+      `POST /v1/${RELEASE_NAME}:distribute`,
+    ]);
+  });
+
+  it('uploads normally when the versionCode is unknown to Firebase', async () => {
+    existingReleases = [{ name: 'projects/1/apps/1:1:android:abc/releases/old', buildVersion: '41' }];
+
+    await makePublisher().publish(ctx, {
+      artifact: { kind: 'apk', platform: 'android', path: artifactPath },
+      versionCode: 42,
+    });
+
+    expect(recorded.some((r) => r.url.endsWith('/releases:upload'))).toBe(true);
   });
 });

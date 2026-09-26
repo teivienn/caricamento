@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { ApkUseCase } from './application/apk.js';
 import { BuildUseCase } from './application/build.js';
 import { DetectUseCase } from './application/detect.js';
 import { DoctorUseCase } from './application/doctor.js';
@@ -9,12 +10,15 @@ import { configSchema, type CaricamentoConfig } from './core/config/schema.js';
 import { ConfigError } from './core/errors.js';
 import type { Publisher, VersionCodeProvider } from './core/ports/index.js';
 import { GradleBuilder } from './infra/builders/gradle.js';
+import { GitChangelogProvider } from './infra/changelog/git.js';
 import { createGoogleTokenProvider, type TokenProvider } from './infra/publishers/firebase/auth.js';
 import { FirebasePublisher } from './infra/publishers/firebase/publisher.js';
 import { FirebaseVersionCodeProvider } from './infra/publishers/firebase/version-code.js';
 import { PlayPublisher } from './infra/publishers/googleplay/publisher.js';
+import { PlaySharingPublisher } from './infra/publishers/googleplay/sharing.js';
 import { PlayVersionCodeProvider } from './infra/publishers/googleplay/version-code.js';
 import { AndroidSigningProvider } from './infra/signing/android.js';
+import { BundletoolApkConverter } from './infra/system/bundletool.js';
 import { JitiConfigLoader, resolveConfigPath } from './infra/system/config-loader.js';
 import { DotenvSecretStore } from './infra/system/dotenv.js';
 import { EnvSecretStore } from './infra/system/env.js';
@@ -47,6 +51,7 @@ export interface Container {
   build: BuildUseCase;
   upload: UploadUseCase;
   release: ReleaseUseCase;
+  apk: ApkUseCase;
   status: StatusUseCase;
 }
 
@@ -105,6 +110,22 @@ export async function createContainer(options: ContainerOptions): Promise<Contai
     publishers.play = new PlayPublisher({ config: playConfig, tokenProvider: playTokenProvider });
   }
 
+  if (config.targets.playsharing) {
+    const sharingConfig = config.targets.playsharing;
+    let lazyProvider: TokenProvider | null = null;
+    const tokenProvider: TokenProvider = async () => {
+      if (!lazyProvider) {
+        const credential = await secrets.resolve(sharingConfig.serviceAccountRef);
+        lazyProvider = createGoogleTokenProvider(credential, {
+          scopes: ['https://www.googleapis.com/auth/androidpublisher'],
+          service: 'Google Play Internal App Sharing',
+        });
+      }
+      return lazyProvider();
+    };
+    publishers.playsharing = new PlaySharingPublisher({ config: sharingConfig, tokenProvider });
+  }
+
   // auto-increment source: explicit version.source, else play when configured,
   // else firebase (SPEC §8).
   let versionCodeProvider: VersionCodeProvider | undefined;
@@ -131,6 +152,8 @@ export async function createContainer(options: ContainerOptions): Promise<Contai
     }
   }
 
+  const changelog = config.changelog ? new GitChangelogProvider(processes, config.changelog) : undefined;
+
   return {
     cwd,
     config,
@@ -141,13 +164,14 @@ export async function createContainer(options: ContainerOptions): Promise<Contai
     doctor: new DoctorUseCase(processes, secrets),
     build: new BuildUseCase({ config, builder, signing, versionCodeProvider, recorder: runs }),
     upload: new UploadUseCase({ publishers, recorder: runs }),
-    release: new ReleaseUseCase({ config, builder, signing, publishers, versionCodeProvider, recorder: runs }),
+    release: new ReleaseUseCase({ config, builder, signing, publishers, versionCodeProvider, changelog, recorder: runs }),
+    apk: new ApkUseCase({ converter: new BundletoolApkConverter({ processes, secrets, config }), recorder: runs }),
     status: new StatusUseCase(runs),
   };
 }
 
 /** Container for commands that must work without a config file (detect, doctor, init). */
-export function createBareContainer(options: ContainerOptions): Omit<Container, 'config' | 'build' | 'upload' | 'release'> & { config: CaricamentoConfig } {
+export function createBareContainer(options: ContainerOptions): Omit<Container, 'config' | 'build' | 'upload' | 'release' | 'apk'> & { config: CaricamentoConfig } {
   const { cwd } = options;
   const processes = new NodeProcessRunner();
   const secrets = new ChainedSecretResolver([

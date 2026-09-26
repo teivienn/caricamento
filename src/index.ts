@@ -1,7 +1,16 @@
 export { defineConfig } from './core/config/defineConfig.js';
 export { configSchema } from './core/config/schema.js';
 export { resolveVariantConfig } from './core/config/variants.js';
-export type { CaricamentoConfig, Platform, PlayTargetConfig, ProjectType, VariantConfig } from './core/config/schema.js';
+export { formatReleaseNotes } from './core/changelog/index.js';
+export type {
+  CaricamentoConfig,
+  ChangelogConfig,
+  Platform,
+  PlaySharingTargetConfig,
+  PlayTargetConfig,
+  ProjectType,
+  VariantConfig,
+} from './core/config/schema.js';
 export type { Artifact, ArtifactKind } from './core/artifact/types.js';
 export {
   CaricamentoError,
@@ -27,8 +36,10 @@ export type { ProjectDescriptor } from './core/project/types.js';
 export { resolveAndroidVersion } from './core/versioning/index.js';
 export type { ResolvedVersion } from './core/versioning/index.js';
 export type {
+  ApkConverter,
   Builder,
   BuildRequest,
+  ChangelogProvider,
   ConfigLoader,
   ProcessRunner,
   Publisher,

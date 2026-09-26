@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { CaricamentoError } from '../core/errors.js';
+import { apkCommand } from './commands/apk.js';
 import { buildCommand } from './commands/build.js';
 import { detectCommand } from './commands/detect.js';
 import { doctorCommand } from './commands/doctor.js';
@@ -36,6 +37,7 @@ program.addCommand(detectCommand(globals));
 program.addCommand(buildCommand(globals));
 program.addCommand(uploadCommand(globals));
 program.addCommand(releaseCommand(globals));
+program.addCommand(apkCommand(globals));
 program.addCommand(statusCommand(globals));
 program.addCommand(runsCommand(globals));
 

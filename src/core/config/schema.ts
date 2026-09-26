@@ -94,9 +94,23 @@ const playTargetSchema = z.object({
   status: z.enum(['completed', 'draft']).default('completed'),
 });
 
+const playSharingTargetSchema = z.object({
+  /** Secret ref resolving to a service-account JSON with Play API access. */
+  serviceAccountRef: secretRef,
+  packageName: z.string().min(1),
+});
+
+const changelogSchema = z.object({
+  /** 'git': release notes from commits since the last git tag. */
+  source: z.enum(['git']),
+  /** Fallback commit count when the repo has no tags. */
+  maxCommits: z.number().int().positive().default(20),
+});
+
 const targetsSchema = z.object({
   firebase: firebaseTargetSchema.optional(),
   play: playTargetSchema.optional(),
+  playsharing: playSharingTargetSchema.optional(),
 });
 
 /**
@@ -120,6 +134,7 @@ export const configSchema = z.object({
   ios: iosSchema.optional(),
   version: versionSchema.default({ strategy: 'manual' }),
   targets: targetsSchema.default({}),
+  changelog: changelogSchema.optional(),
   variants: z.record(z.string(), variantSchema).optional(),
 });
 
@@ -127,4 +142,6 @@ export type CaricamentoConfig = z.infer<typeof configSchema>;
 export type AndroidSigningConfig = z.infer<typeof androidSigningSchema>;
 export type FirebaseTargetConfig = z.infer<typeof firebaseTargetSchema>;
 export type PlayTargetConfig = z.infer<typeof playTargetSchema>;
+export type PlaySharingTargetConfig = z.infer<typeof playSharingTargetSchema>;
+export type ChangelogConfig = z.infer<typeof changelogSchema>;
 export type VariantConfig = z.infer<typeof variantSchema>;

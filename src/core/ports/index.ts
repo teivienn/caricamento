@@ -73,6 +73,11 @@ export interface PublishRequest {
   /** All artifacts produced by the build (e.g. mapping.txt alongside the binary). */
   artifacts?: Artifact[];
   releaseNotes?: string;
+  /**
+   * Release notes generated from the changelog (e.g. git log). Lowest
+   * priority: explicit releaseNotes and target-level config both win.
+   */
+  generatedReleaseNotes?: string;
   versionName?: string;
   versionCode?: number;
 }
@@ -106,6 +111,18 @@ export interface VersionCodeProvider {
   /** Short source label for logs, e.g. 'play' | 'firebase'. */
   readonly name: string;
   maxVersionCode(): Promise<number | null>;
+}
+
+/** Generates release notes from the project's own history (SPEC §7). */
+export interface ChangelogProvider {
+  /** Source label for logs, e.g. 'git'. */
+  readonly name: string;
+  generateReleaseNotes(cwd: string): Promise<string>;
+}
+
+/** Converts an AAB into a locally installable universal APK (bundletool). */
+export interface ApkConverter {
+  buildUniversalApk(ctx: StepContext, aabPath: string, outPath: string): Promise<string>;
 }
 
 export interface RunRecordEntry {

@@ -46,6 +46,12 @@ export interface TrackUpdate {
   }>;
 }
 
+export interface InternalAppSharingArtifact {
+  downloadUrl?: string;
+  sha256?: string;
+  certificateFingerprint?: string;
+}
+
 /**
  * Thin REST client for the Play Developer API v3 (SPEC §7.2), shared by
  * PlayPublisher and PlayVersionCodeProvider. Mirrors the Firebase publisher's
@@ -149,8 +155,33 @@ export class PlayApiClient {
     });
   }
 
-  async listTracks(packageName: string, editId: string): Promise<Track[]> {
-    const response = await this.withRetries(async () => {
+  /**
+   * Internal App Sharing upload (androidpublisher.internalappsharingartifacts
+   * .uploadapk/.uploadbundle): same host, /upload/... path, no edit session.
+   */
+  async uploadSharingArtifact(
+    packageName: string,
+    kind: 'apk' | 'aab',
+    artifactPath: string,
+  ): Promise<InternalAppSharingArtifact> {
+    const body = await readFile(artifactPath);
+    const artifactType = kind === 'aab' ? 'bundle' : 'apk';
+    const url = `${API_BASE}/upload/androidpublisher/v3/applications/internalappsharing/${packageName}/artifacts/${artifactType}`;
+    return this.withRetries(async () => {
+      const response = await this.fetchImpl(url, {
+        method: 'POST',
+        headers: {
+          ...(await this.authHeaders()),
+          'Content-Type': 'application/octet-stream',
+          'X-Goog-Upload-Protocol': 'raw',
+        },
+        body: new Uint8Array(body),
+      });
+      return this.parseJson<InternalAppSharingArtifact>(response, 'internalappsharingartifacts.upload');
+    });
+  }
+
+  async listTracks(packageName: string, editId: string): Promise<Track[]> {    const response = await this.withRetries(async () => {
       const res = await this.fetchImpl(
         `${API_BASE}/androidpublisher/v3/applications/${packageName}/edits/${editId}/tracks`,
         { method: 'GET', headers: await this.authHeaders() },

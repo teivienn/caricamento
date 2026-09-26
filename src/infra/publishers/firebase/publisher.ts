@@ -5,6 +5,7 @@ import type { StepContext } from '../../../core/pipeline/types.js';
 import type { Publisher, PublishRequest, PublishResult } from '../../../core/ports/index.js';
 import { firebaseAppResource } from './app-resource.js';
 import type { TokenProvider } from './auth.js';
+import { fetchAllReleases } from './releases.js';
 
 const API_BASE = 'https://firebaseappdistribution.googleapis.com';
 // Media upload lives on the SAME host under /upload/... — the
@@ -55,7 +56,8 @@ export class FirebasePublisher implements Publisher {
 
   async publish(ctx: StepContext, request: PublishRequest): Promise<PublishResult> {
     const app = this.appResource();
-    const releaseNotes = request.releaseNotes ?? this.options.config.releaseNotes;
+    // Priority: --release-notes flag > target config > generated changelog.
+    const releaseNotes = request.releaseNotes ?? this.options.config.releaseNotes ?? request.generatedReleaseNotes;
     // The API expects bare group aliases ("qa"), NOT resource names ("groups/qa").
     const groups = this.options.config.groups.map((g) => g.replace(/^groups\//, ''));
 
@@ -67,20 +69,31 @@ export class FirebasePublisher implements Publisher {
     const token = await this.options.tokenProvider();
     const authHeaders = { Authorization: `Bearer ${token}` };
 
-    ctx.progress(5, 'Uploading binary');
-    const operation = await this.upload(app, request.artifact.path, authHeaders);
+    // Idempotency (SPEC §9): a release with this buildVersion was already
+    // uploaded — skip the upload and notes, but still distribute.
+    let releaseName: string | undefined;
+    if (request.versionCode !== undefined) {
+      releaseName = await this.findExistingRelease(app, request.versionCode, token, ctx);
+    }
 
-    ctx.progress(30, 'Processing upload');
-    const releaseName = await this.pollOperation(operation.name, authHeaders, ctx);
-    ctx.log('stdout', `Release created: ${releaseName}`);
+    if (releaseName) {
+      ctx.log('stdout', `versionCode ${request.versionCode} already uploaded as ${releaseName} — skipping upload`);
+    } else {
+      ctx.progress(5, 'Uploading binary');
+      const operation = await this.upload(app, request.artifact.path, authHeaders);
 
-    if (releaseNotes) {
-      ctx.progress(80, 'Setting release notes');
-      await this.withRetries(() =>
-        this.request('PATCH', `${API_BASE}/v1/${releaseName}?updateMask=release_notes.text`, authHeaders, {
-          releaseNotes: { text: releaseNotes },
-        }),
-      );
+      ctx.progress(30, 'Processing upload');
+      releaseName = await this.pollOperation(operation.name, authHeaders, ctx);
+      ctx.log('stdout', `Release created: ${releaseName}`);
+
+      if (releaseNotes) {
+        ctx.progress(80, 'Setting release notes');
+        await this.withRetries(() =>
+          this.request('PATCH', `${API_BASE}/v1/${releaseName}?updateMask=release_notes.text`, authHeaders, {
+            releaseNotes: { text: releaseNotes },
+          }),
+        );
+      }
     }
 
     if (groups.length > 0 || this.options.config.testers.length > 0) {
@@ -99,6 +112,20 @@ export class FirebasePublisher implements Publisher {
       releaseName,
       url: `https://console.firebase.google.com/project/${app.split('/')[1]}/appdistribution`,
     };
+  }
+
+  private async findExistingRelease(
+    app: string,
+    versionCode: number,
+    token: string,
+    ctx: StepContext,
+  ): Promise<string | undefined> {
+    const releases = await this.withRetries(() => fetchAllReleases(this.fetchImpl, app, token));
+    const existing = releases.find((r) => r.buildVersion === String(versionCode));
+    if (existing && !existing.name) {
+      ctx.log('stderr', `Found a release with buildVersion ${versionCode} but it has no resource name — uploading anyway`);
+    }
+    return existing?.name;
   }
 
   private async upload(app: string, artifactPath: string, headers: Record<string, string>): Promise<Operation> {

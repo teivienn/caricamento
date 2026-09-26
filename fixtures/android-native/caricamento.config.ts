@@ -21,11 +21,14 @@ export default {
 
   version: { strategy: 'timestamp' as const },
 
+  // This fixture also exercises git-derived release notes (SPEC §7.5):
+  // no target-level releaseNotes, so notes come from `git log`.
+  changelog: { source: 'git' as const },
+
   targets: {
     firebase: {
       appIdAndroid: '1:1083921360192:android:7fb11741b80075995fc6a5',
       groups: ['qa'],
-      releaseNotes: 'Caricamento end-to-end test release',
       // Auth: GOOGLE_APPLICATION_CREDENTIALS points at .caricamento/firebase-sa.json
     },
   },

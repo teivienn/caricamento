@@ -194,6 +194,54 @@ describe('PlayPublisher (SPEC §7.2)', () => {
     expect(result.target).toBe('play');
     expect(recorded).toHaveLength(0);
   });
+
+  it('does nothing when the versionCode is already on the target track (SPEC §9)', async () => {
+    tracksResponse = {
+      tracks: [{ track: 'internal', releases: [{ versionCodes: ['42'] }] }],
+    };
+
+    const result = await makePublisher().publish(ctx, {
+      artifact: { kind: 'aab', platform: 'android', path: aabPath },
+      versionCode: 42,
+    });
+
+    expect(result.target).toBe('play');
+    // probe edit only: insert -> tracks.list -> delete; no upload, no commit
+    expect(recorded.map((r) => r.method)).toEqual(['POST', 'GET', 'DELETE']);
+    expect(recorded.some((r) => r.url.endsWith('/bundles'))).toBe(false);
+  });
+
+  it('reuses an existing versionCode on another track: tracks.update + commit, no bundle upload', async () => {
+    tracksResponse = {
+      tracks: [{ track: 'production', releases: [{ versionCodes: ['42'] }] }],
+    };
+
+    await makePublisher().publish(ctx, {
+      artifact: { kind: 'aab', platform: 'android', path: aabPath },
+      versionCode: 42,
+      releaseNotes: 'Promoted build',
+    });
+
+    const methods = recorded.map((r) => r.method);
+    // probe (insert/tracks/delete) + real edit (insert/track update/commit)
+    expect(methods).toEqual(['POST', 'GET', 'DELETE', 'POST', 'PUT', 'POST']);
+    expect(recorded.some((r) => r.url.endsWith('/bundles'))).toBe(false);
+    const trackUpdate = recorded.find((r) => r.method === 'PUT');
+    expect(trackUpdate?.body).toEqual({
+      releases: [{ versionCodes: ['42'], status: 'completed', releaseNotes: [{ language: 'en-US', text: 'Promoted build' }] }],
+    });
+  });
+
+  it('uploads normally when the versionCode is unknown to Play', async () => {
+    tracksResponse = { tracks: [{ track: 'internal', releases: [{ versionCodes: ['41'] }] }] };
+
+    await makePublisher().publish(ctx, {
+      artifact: { kind: 'aab', platform: 'android', path: aabPath },
+      versionCode: 42,
+    });
+
+    expect(recorded.some((r) => r.url.endsWith('/bundles'))).toBe(true);
+  });
 });
 
 describe('PlayVersionCodeProvider (SPEC §8)', () => {

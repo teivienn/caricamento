@@ -4,7 +4,7 @@ import type { Artifact } from '../core/artifact/types.js';
 import type { CaricamentoConfig, Platform } from '../core/config/schema.js';
 import { ValidationError } from '../core/errors.js';
 import type { Step } from '../core/pipeline/types.js';
-import type { Builder, Publisher, SigningProvider, VersionCodeProvider } from '../core/ports/index.js';
+import type { Builder, ChangelogProvider, Publisher, SigningProvider, VersionCodeProvider } from '../core/ports/index.js';
 import { ProjectDetector } from '../core/project/detector.js';
 import { resolveAndroidVersion } from '../core/versioning/index.js';
 
@@ -118,6 +118,22 @@ export function verifySigningStep(signing: SigningProvider | null): Step {
   };
 }
 
+export function changelogStep(provider: ChangelogProvider): Step {
+  return {
+    id: 'changelog',
+    title: 'Generate release notes',
+    run: async (ctx) => {
+      if (ctx.dryRun) {
+        ctx.log('stdout', `[dry-run] would generate release notes via ${provider.name}`);
+        return;
+      }
+      const notes = await provider.generateReleaseNotes(ctx.cwd);
+      ctx.log('stdout', `Release notes (source: ${provider.name}):\n${notes}`);
+      return { data: { generatedReleaseNotes: notes } };
+    },
+  };
+}
+
 export function publishStep(publisher: Publisher, releaseNotes?: string): Step {
   return {
     id: `publish:${publisher.target}`,
@@ -136,6 +152,7 @@ export function publishStep(publisher: Publisher, releaseNotes?: string): Step {
         artifact: binary,
         artifacts,
         releaseNotes,
+        generatedReleaseNotes: ctx.data.get('generatedReleaseNotes') as string | undefined,
         versionCode: ctx.data.get('versionCode') as number | undefined,
         versionName: ctx.data.get('versionName') as string | undefined,
       });

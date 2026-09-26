@@ -10,16 +10,16 @@ export function uploadCommand(globals: () => GlobalOptions): Command {
   return new Command('upload')
     .description('Upload an artifact to a distribution target')
     .argument('[project]', 'registered project name; default: current directory')
-    .requiredOption('--target <target>', 'distribution target (firebase, play)')
+    .requiredOption('--target <target>', 'distribution target (firebase, play, playsharing)')
     .option('--artifact <path>', 'path to a prebuilt artifact (default: newest build output)')
     .option('--artifact-type <type>', 'apk or aab (default: aab for play, apk otherwise)')
     .option('--variant <name>', 'build variant from the config (`all` runs every variant sequentially)')
     .option('--release-notes <text>', 'release notes override')
     .action(async (project: string | undefined, opts: { target: string; artifact?: string; artifactType?: string; variant?: string; releaseNotes?: string }) => {
       const global = globals();
-      if (opts.target !== 'firebase' && opts.target !== 'play') {
+      if (opts.target !== 'firebase' && opts.target !== 'play' && opts.target !== 'playsharing') {
         throw new ValidationError(`Target "${opts.target}" is not supported yet`, {
-          hint: 'Supported targets: firebase, play.',
+          hint: 'Supported targets: firebase, play, playsharing.',
         });
       }
       const target = await resolveTarget(project, global.config, new JsonProjectRegistry());
