@@ -17,16 +17,32 @@ the project is looked up in the registry (see [projects](#projects) and
 | `--verbose` | `false` | Stream step logs (Gradle, xcodebuild, API calls) to the terminal |
 | `--json` | `false` | Machine-readable output; errors are written to stderr as `{"error": {...}}` |
 | `--dry-run` | `false` | Print the plan (steps, Gradle/xcodebuild commands, targets) without executing |
-| `-V`, `--version` | — | Print the caricamento version |
+| `-V`, `--version` | — | Print the caricamento version (only before a command; after `build`/`release`, `--version <name>` sets versionName) |
 | `-h`, `--help` | — | Help for the program or a command |
 
-Global options can be placed before or after the command name.
+Options are positional: whatever comes **before** the command name belongs to
+the program, whatever comes **after** it belongs to the command. `--config`,
+`--verbose`, `--json` and `--dry-run` are also accepted by every command, so
+they work in either position:
 
-> **Known issue:** because the program-level `--version` flag is recognized
-> anywhere on the command line, `build --version <name>` and
-> `release --version <name>` currently print the caricamento version and exit
-> instead of overriding versionName. Set `version.name` in the config instead
-> (see [versioning](versioning.md#versionname)).
+```bash
+caricamento --dry-run build     # same as
+caricamento build --dry-run
+```
+
+`--version` is the one flag whose meaning depends on its position:
+
+```bash
+caricamento --version                  # prints the caricamento version and exits (same as -V)
+caricamento build --version 1.2.3      # sets versionName to 1.2.3 for this build
+caricamento release --version 1.2.3    # same for a release
+```
+
+For group commands (`projects`, `secrets`), put global options before the
+group name or after the full subcommand (`caricamento secrets list --json`),
+not between the two (`caricamento secrets --json list` is rejected). A subcommand that
+defines its own flag with the same name keeps its own meaning: `--config` in
+`projects add` is the config path stored in the registry entry.
 
 ## Exit codes
 
@@ -145,7 +161,7 @@ Builds and signs an artifact, then verifies the signature. Nothing is uploaded.
 | `--artifact-type <t>` | `apk` | `apk` or `aab` (Android only; iOS always produces an `.ipa`) |
 | `--variant <name>` | — | Build variant from the config; `all` runs every variant ([variants.md](variants.md)) |
 | `--build <n>` | — | versionCode / CFBundleVersion; used by the `manual` strategy only |
-| `--version <name>` | — | versionName / CFBundleShortVersionString (see the known issue above) |
+| `--version <name>` | `version.name` | versionName / CFBundleShortVersionString; overrides `version.name` (must follow `build`, see [global options](#global-options)) |
 
 iOS outputs go to `build/caricamento/ipa/` (dSYMs alongside).
 
@@ -185,7 +201,7 @@ Build → sign → verify → publish to every target in one run.
 | `--artifact-type <t>` | `apk` | Android only. Forced to `aab` when `play` is among the targets |
 | `--variant <name>` | — | Build variant; `all` runs every variant |
 | `--build <n>` | — | versionCode / CFBundleVersion (`manual` strategy) |
-| `--version <name>` | — | versionName (see the known issue above) |
+| `--version <name>` | `version.name` | versionName / CFBundleShortVersionString; overrides `version.name` (must follow `release`, see [global options](#global-options)) |
 | `--release-notes <text>` | — | Overrides target `releaseNotes` / `whatToTest` and the git changelog |
 
 Default targets: Android — `firebase`, `play`, `playsharing`; iOS — `appstore`,

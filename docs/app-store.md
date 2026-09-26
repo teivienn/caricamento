@@ -114,8 +114,9 @@ export default {
 };
 ```
 
-`version.name` is required for publishing: App Store Connect needs a
-`CFBundleShortVersionString`.
+A version name is required for publishing: App Store Connect needs a
+`CFBundleShortVersionString`. Set `version.name` in the config or pass
+`release --version <name>`.
 
 ### Configuration reference
 

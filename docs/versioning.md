@@ -62,9 +62,20 @@ target or change `version.source`.
 ## versionName
 
 The version name is never computed: it comes from `version.name` in the
-config. The CLI flag `--version <name>` is meant to override it, but is
-currently shadowed by the global `--version` flag (see the known issue in
-[commands.md](commands.md#global-options)), so use `version.name`.
+config, or from `--version <name>` on `build` / `release`, which overrides it
+for that run.
+
+`--version` is positional. After the command name it sets versionName; before
+the command name (or with no command at all) it prints the caricamento version
+and exits:
+
+```bash
+caricamento build --version 1.4.1      # versionName = 1.4.1
+caricamento release --version 1.4.1    # versionName = 1.4.1
+caricamento --version                  # prints the caricamento version
+```
+
+See [commands.md](commands.md#global-options) for how option position works.
 
 To follow `package.json`, read it in the config via
 [`CARICAMENTO_PROJECT_DIR`](configuration.md#caricamento_project_dir).
