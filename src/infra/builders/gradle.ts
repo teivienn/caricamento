@@ -80,7 +80,7 @@ export class GradleBuilder implements Builder {
     if (ctx.dryRun) {
       const args = useInitScript
         ? ['-I', '<generated-init-script>', plan.task]
-        : [plan.task, ...redactedSigningArgs(this.config), ...versionArgs(request)];
+        : [plan.task, ...redactedSigningArgs(this.config), ...versionArgs(request), ...applicationIdArgs(this.config)];
       ctx.log('stdout', `[dry-run] (cd ${projectRoot} && ./gradlew ${args.join(' ')})`);
       return [];
     }
@@ -95,11 +95,12 @@ export class GradleBuilder implements Builder {
           buildType: this.config.android?.buildType ?? 'release',
           versionCode: request.versionCode,
           versionName: request.versionName,
+          applicationId: this.config.android?.applicationId,
         }),
       );
       args = ['-I', initScript.path, plan.task];
     } else {
-      args = [plan.task, ...(await this.buildSigningArgs()), ...versionArgs(request)];
+      args = [plan.task, ...(await this.buildSigningArgs()), ...versionArgs(request), ...applicationIdArgs(this.config)];
     }
 
     try {
@@ -176,6 +177,12 @@ function versionArgs(request: BuildRequest): string[] {
   if (request.versionCode !== undefined) args.push(`-PCARICAMENTO_VERSION_CODE=${request.versionCode}`);
   if (request.versionName !== undefined) args.push(`-PCARICAMENTO_VERSION_NAME=${request.versionName}`);
   return args;
+}
+
+/** Properties-mode counterpart of the init-script applicationId override. */
+function applicationIdArgs(config: CaricamentoConfig): string[] {
+  const applicationId = config.android?.applicationId;
+  return applicationId ? [`-PCARICAMENTO_APPLICATION_ID=${applicationId}`] : [];
 }
 
 function redactedSigningArgs(config: CaricamentoConfig): string[] {

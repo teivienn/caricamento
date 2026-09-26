@@ -15,6 +15,8 @@ export interface InitScriptOptions {
   buildType: string;
   versionCode?: number;
   versionName?: string;
+  /** applicationId override (build variants); injected into defaultConfig. */
+  applicationId?: string;
 }
 
 function groovyLiteral(value: string): string {
@@ -42,6 +44,10 @@ export function renderGradleInitScript(options: InitScriptOptions): string {
     '        if (androidExt == null) {',
     '            return',
     '        }',
+    '        // Only application modules: library modules forbid applicationId',
+    "        if (!project.plugins.hasPlugin('com.android.application')) {",
+    '            return',
+    '        }',
     '        androidExt.signingConfigs {',
     '            caricamento {',
     `                storeFile project.file(${groovyLiteral(signing.storeFile)})`,
@@ -61,6 +67,9 @@ export function renderGradleInitScript(options: InitScriptOptions): string {
   }
   if (options.versionName !== undefined) {
     lines.push(`        androidExt.defaultConfig.versionName = ${groovyLiteral(options.versionName)}`);
+  }
+  if (options.applicationId !== undefined) {
+    lines.push(`        androidExt.defaultConfig.applicationId = ${groovyLiteral(options.applicationId)}`);
   }
   lines.push('    }', '}');
   return lines.join('\n') + '\n';

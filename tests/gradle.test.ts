@@ -106,6 +106,34 @@ describe('GradleBuilder', () => {
     expect(artifacts[0]?.path).toBe(join(dir, 'app/build/outputs/apk/release/app-release.apk'));
   });
 
+  it('passes -PCARICAMENTO_APPLICATION_ID in properties mode when configured', async () => {
+    const config = makeConfig({
+      module: 'app',
+      buildType: 'release',
+      applicationId: 'com.example.app.qa',
+      signing: {
+        keystoreRef: 'secret:android/keystore-path',
+        keystorePasswordRef: 'secret:android/keystore-password',
+        keyAlias: 'upload',
+        keyPasswordRef: 'secret:android/key-password',
+        injection: 'properties',
+      },
+    });
+    const secrets = makeSecrets({
+      'secret:android/keystore-path': '/tmp/test.keystore',
+      'secret:android/keystore-password': 'storepass',
+      'secret:android/key-password': 'keypass',
+    });
+    await mkdir(join(dir, 'app/build/outputs/apk/release'), { recursive: true });
+    await writeFile(join(dir, 'app/build/outputs/apk/release/app-release.apk'), 'fake-apk');
+
+    const builder = new GradleBuilder(runner, secrets, config);
+    await builder.build(makeContext(dir), { platform: 'android', artifactType: 'apk' });
+
+    const [, args] = runMock.mock.calls[0]!;
+    expect(args).toContain('-PCARICAMENTO_APPLICATION_ID=com.example.app.qa');
+  });
+
   it('collects mapping.txt when present', async () => {
     await mkdir(join(dir, 'app/build/outputs/apk/release'), { recursive: true });
     await writeFile(join(dir, 'app/build/outputs/apk/release/app-release.apk'), 'fake-apk');
@@ -226,6 +254,38 @@ describe('GradleBuilder init-script injection (default)', () => {
     await builder.build(ctx, { platform: 'android', artifactType: 'apk' });
     expect(runMock).not.toHaveBeenCalled();
     expect(logs.join('\n')).toContain('<generated-init-script>');
+  });
+
+  it('renders the applicationId override into the init script when configured', async () => {
+    let scriptContent = '';
+    runMock.mockImplementation(async (_cmd, args) => {
+      scriptContent = await readFile(args[1]!, 'utf8');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+
+    const builder = new GradleBuilder(
+      runner,
+      secrets,
+      makeConfig({ module: 'app', buildType: 'release', applicationId: 'com.example.app.qa', signing: signingConfig }),
+    );
+    await builder.build(makeContext(dir), { platform: 'android', artifactType: 'apk' });
+
+    expect(scriptContent).toContain("androidExt.defaultConfig.applicationId = 'com.example.app.qa'");
+    expect(runMock.mock.calls[0]![1].some((a: string) => a.startsWith('-PCARICAMENTO_APPLICATION_ID'))).toBe(false);
+  });
+
+  it('omits the applicationId line when not configured', async () => {
+    let scriptContent = '';
+    runMock.mockImplementation(async (_cmd, args) => {
+      scriptContent = await readFile(args[1]!, 'utf8');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+
+    const builder = new GradleBuilder(runner, secrets, makeConfig({ module: 'app', signing: signingConfig }));
+    await builder.build(makeContext(dir), { platform: 'android', artifactType: 'apk' });
+
+    // the guard comment mentions applicationId; assert no assignment is rendered
+    expect(scriptContent).not.toContain('defaultConfig.applicationId =');
   });
 });
 

@@ -28,6 +28,11 @@ export interface ContainerOptions {
   configPath?: string;
   /** Extra .env files consulted before <cwd>/.env (SPEC §3.5, registry mode). */
   envFiles?: string[];
+  /**
+   * Pre-resolved config (e.g. a merged build variant). When present, the
+   * config file is not loaded.
+   */
+  configOverride?: CaricamentoConfig;
 }
 
 /** Composition root (SPEC §3.1): plain factory object, no DI framework. */
@@ -56,8 +61,7 @@ export async function createContainer(options: ContainerOptions): Promise<Contai
   ]);
   const runs = new RunStore();
 
-  const configPath = resolveConfigPath(cwd, options.configPath);
-  const config = await new JitiConfigLoader().loadValidated(configPath);
+  const config = options.configOverride ?? (await new JitiConfigLoader().loadValidated(resolveConfigPath(cwd, options.configPath)));
 
   const builder = new GradleBuilder(processes, secrets, config);
   const signing = config.android?.signing ? new AndroidSigningProvider(processes, config) : null;

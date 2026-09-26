@@ -140,21 +140,29 @@ Google Cloud не нужна — доступ выдаётся в Play Console) 
 caricamento secrets set play/service-account   # вставьте ПУТЬ к скачанному JSON
 ```
 
-Конфигурация таргета:
+### Конфигурация `targets.play` — все опции
 
 ```typescript
 targets: {
   play: {
-    serviceAccountRef: 'secret:play/service-account',
-    packageName: 'com.example.app',   // applicationId приложения
-    track: 'internal',                // internal | alpha | beta | production (по умолчанию internal)
-    status: 'completed',              // completed | draft (по умолчанию completed)
-    releaseNotes: 'Что нового',       // опционально; перекрывается флагом --release-notes
+    serviceAccountRef: 'secret:play/service-account', // обязательно
+    packageName: 'com.example.app',                   // обязательно
+    track: 'internal',
+    status: 'completed',
+    releaseNotes: 'Что нового',
   },
 },
 ```
 
-Особенности:
+| Поле | Тип | Дефолт | Описание |
+|---|---|---|---|
+| `serviceAccountRef` | `secret:<name>` | — | **Обязательно.** Секрет с путём к JSON-ключу service account (или самим JSON). Шаги 1–7 выше |
+| `packageName` | string | — | **Обязательно.** `applicationId` приложения, как в Play Console |
+| `track` | `internal` \| `alpha` \| `beta` \| `production` | `internal` | Трек публикации (подробнее ниже) |
+| `status` | `completed` \| `draft` | `completed` | `draft` — релиз остаётся черновиком на треке, не публикуется; `completed` — доступен тестировщикам/пользователям трека сразу |
+| `releaseNotes` | string | — | Текст «Что нового» (локаль `en-US`; мультиязычность — в roadmap). Перекрывается флагом `--release-notes` |
+
+### Особенности поведения
 
 - **Только AAB.** Play не принимает APK — когда `play` есть среди таргетов,
   `release` автоматически переключает сборку на AAB (Firebase принимает AAB
@@ -168,6 +176,53 @@ targets: {
 - При сбое после открытия edit-сессии (например, ошибка валидации на commit)
   edit удаляется автоматически — «висючих» черновиков в Play Console не
   остаётся.
+
+### Треки
+
+| Трек | Кому доступен | Типичное применение |
+|---|---|---|
+| `internal` | До 100 тестировщиков, без ревью Google | Ежедневные сборки для команды/QA |
+| `alpha` | Закрытое тестирование по спискам | Стабильные сборки для расширенной группы |
+| `beta` | Открытое или закрытое бета-тестирование | Предрелизная проверка |
+| `production` | Все пользователи | Релиз (права «Release to production…») |
+
+Один запуск — один трек. Трек задаётся в конфиге; для разовой смены удобно
+держать несколько зарегистрированных проектов с разными конфигами:
+
+```bash
+caricamento projects add myapp-qa  --path ~/work/myapp --config ~/.caricamento/projects/myapp-qa.config.ts   # track: internal
+caricamento projects add myapp-beta --path ~/work/myapp --config ~/.caricamento/projects/myapp-beta.config.ts # track: beta
+
+caricamento release myapp-qa     # internal
+caricamento release myapp-beta   # beta
+```
+
+### Типовые сценарии
+
+```bash
+# QA-сборка в internal (при auto-increment версия поднимется сама)
+caricamento release myapp
+
+# То же + заметки к релизу разово, без правки конфига
+caricamento release myapp --release-notes "Фикс краша на старте"
+
+# Черновик на beta-треке (не публикуется, проверяете в консоли руками)
+#   в конфиге: track: 'beta', status: 'draft'
+caricamento release myapp-beta
+
+# Одновременно в Firebase (группа qa) и Play (internal)
+caricamento release myapp --targets firebase,play
+```
+
+### Пока не поддерживается (roadmap)
+
+- **Промоушен существующего билда** между треками без пересборки
+  (internal → production тем же versionCode) — сейчас каждый запуск
+  собирает и загружает новый билд;
+- **Staged rollout** (`userFraction`, процентный раскат на production);
+- несколько треков за один запуск;
+- мультиязычные release notes (сейчас только `en-US`);
+- кастомное имя релиза (Play формирует его из versionName).
 
 **Важные ограничения API:**
 - Приложение должно **уже существовать** в Play Console — первое создание
@@ -232,6 +287,80 @@ Firebase. Play — источник истины (все треки); Firebase �
 
 `versionName` всегда вручную: `version.name` в конфиге или `--version 1.0.4`.
 Флаги CLI перекрывают конфиг.
+
+### Варианты сборки (qa/prod)
+
+Одно приложение можно публиковать под несколькими applicationId — например,
+`com.example.app.qa` для внутреннего тестирования и `com.example.app` для
+релиза. Варианты описываются в блоке `variants`:
+
+```typescript
+export default {
+  // ...базовый android/signing/version...
+
+  targets: {
+    firebase: { appIdAndroid: '1:123:android:base', groups: ['qa'] },
+  },
+
+  variants: {
+    qa: {
+      applicationId: 'com.example.app.qa',   // инжектируется в сборку извне
+      targets: {                             // ПОЛНОСТЬЮ заменяют базовые targets
+        firebase: { appIdAndroid: '1:123:android:qa', groups: ['qa'] },
+      },
+    },
+    prod: {
+      applicationId: 'com.example.app',
+      targets: {
+        play: {
+          serviceAccountRef: 'secret:play/service-account',
+          packageName: 'com.example.app',
+          track: 'internal',
+        },
+      },
+      version: { strategy: 'auto-increment' }, // заменяет базовый version
+    },
+  },
+};
+```
+
+Запуск:
+
+```bash
+caricamento release myapp --variant qa     # один вариант
+caricamento release myapp --variant all    # все варианты последовательно
+caricamento build --variant prod --artifact-type aab
+```
+
+`--variant all` прогоняет каждый вариант отдельным пайплайном (свой runId,
+свои секреты/таргеты/версия): упавший вариант не останавливает остальные,
+в конце печатается сводка по всем вариантам, а код выхода ненулевой, если
+упал хотя бы один.
+
+Правила слияния (намеренно простые, без deep merge):
+
+- `applicationId` и `flavor` из варианта дополняют блок `android`;
+- `targets` варианта **заменяют** базовые целиком — вариант публикуется
+  ровно туда, куда указано;
+- `version` варианта заменяет базовый блок целиком.
+
+**Как инжектируется applicationId.** Тем же способом, что подпись: в режиме
+`init-script` сгенерированный Gradle init script выставляет
+`android.defaultConfig.applicationId` в `afterEvaluate` — **файлы проекта не
+модифицируются**, варианты работают на ванильных шаблонах и переживают
+`expo prebuild --clean` (ре-пребилд не нужен). В режиме `properties`
+передаётся `-PCARICAMENTO_APPLICATION_ID=...` — тогда `build.gradle` проекта
+должен прочитать это свойство сам (по аналогии с `-PCARICAMENTO_VERSION_CODE`).
+
+**Когда вместо этого использовать `flavor`.** Если варианты уже определены
+в Gradle проекта (productFlavors со своими applicationId/applicationIdSuffix),
+не дублируйте их — укажите в варианте только `flavor: 'qa'`, и caricamento
+соберёт `:app:assembleQaRelease`. `applicationId`-инжекция нужна проектам
+без flavor'ов (типичный RN/Expo).
+
+Каждый applicationId должен быть зарегистрирован на стороне стора: отдельное
+приложение в Firebase (свой `appIdAndroid`) и/или в Play Console (свой
+`packageName`).
 
 ### Секреты
 
@@ -340,9 +469,9 @@ caricamento doctor [project]              # проверка окружения 
 caricamento detect [project]              # показать дескриптор проекта
 
 caricamento build   [project] [--platform android] [--artifact-type apk|aab]
-                    [--build <n>] [--version <name>]
+                    [--variant qa|all] [--build <n>] [--version <name>]
 caricamento upload  [project] --target firebase|play [--artifact <path>] [--release-notes <text>]
-caricamento release [project] [--targets firebase,play] [...]
+caricamento release [project] [--targets firebase,play] [--variant qa|all] [...]
 
 caricamento runs                          # история запусков
 caricamento status <runId>                # сводка по запуску
@@ -387,7 +516,7 @@ caricamento release --platform android --targets firebase --json
 
 ```bash
 npm run build       # tsup → dist/
-npm test            # vitest, 77 тестов (Android SDK / Firebase / Play не нужны)
+npm test            # vitest, 96 тестов (Android SDK / Firebase / Play не нужны)
 npm run typecheck
 npm run lint        # eslint + правила границ слоёв (SPEC §3.1)
 ```

@@ -33,6 +33,12 @@ const androidSchema = z.object({
   module: z.string().default('app'),
   flavor: z.string().optional(),
   buildType: z.string().default('release'),
+  /**
+   * applicationId override, injected externally at build time (init script or
+   * -PCARICAMENTO_APPLICATION_ID) — project files are never modified.
+   * Usually set per variant (see `variants`).
+   */
+  applicationId: z.string().min(1).optional(),
   signing: androidSigningSchema.optional(),
 });
 
@@ -88,20 +94,37 @@ const playTargetSchema = z.object({
   status: z.enum(['completed', 'draft']).default('completed'),
 });
 
+const targetsSchema = z.object({
+  firebase: firebaseTargetSchema.optional(),
+  play: playTargetSchema.optional(),
+});
+
+/**
+ * A build variant: one app published under several applicationIds
+ * (e.g. qa/prod). Overrides are applied by resolveVariantConfig:
+ * flavor/applicationId merge into `android`, while `targets` and `version`
+ * REPLACE the base blocks entirely (predictable, no deep merge).
+ */
+const variantSchema = z.object({
+  /** Gradle product flavor, for projects that define variants in Gradle. */
+  flavor: z.string().optional(),
+  /** Tool-injected applicationId override — works on vanilla/regenerated projects. */
+  applicationId: z.string().min(1).optional(),
+  targets: targetsSchema.optional(),
+  version: versionSchema.optional(),
+});
+
 export const configSchema = z.object({
   project: z.object({ type: projectTypeSchema.default('auto') }).default({ type: 'auto' }),
   android: androidSchema.optional(),
   ios: iosSchema.optional(),
   version: versionSchema.default({ strategy: 'manual' }),
-  targets: z
-    .object({
-      firebase: firebaseTargetSchema.optional(),
-      play: playTargetSchema.optional(),
-    })
-    .default({}),
+  targets: targetsSchema.default({}),
+  variants: z.record(z.string(), variantSchema).optional(),
 });
 
 export type CaricamentoConfig = z.infer<typeof configSchema>;
 export type AndroidSigningConfig = z.infer<typeof androidSigningSchema>;
 export type FirebaseTargetConfig = z.infer<typeof firebaseTargetSchema>;
 export type PlayTargetConfig = z.infer<typeof playTargetSchema>;
+export type VariantConfig = z.infer<typeof variantSchema>;

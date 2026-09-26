@@ -1,10 +1,10 @@
 import { Command } from 'commander';
-import { createContainer } from '../../container.js';
 import { ValidationError } from '../../core/errors.js';
 import { JsonProjectRegistry } from '../../infra/system/registry.js';
 import { renderEvents } from '../render/renderer.js';
 import type { GlobalOptions } from '../options.js';
 import { resolveTarget } from '../resolve-target.js';
+import { runWithVariants } from './run-variants.js';
 
 export function buildCommand(globals: () => GlobalOptions): Command {
   return new Command('build')
@@ -12,9 +12,10 @@ export function buildCommand(globals: () => GlobalOptions): Command {
     .argument('[project]', 'registered project name; default: current directory')
     .option('--platform <platform>', 'target platform', 'android')
     .option('--artifact-type <type>', 'apk or aab', 'apk')
+    .option('--variant <name>', 'build variant from the config (`all` runs every variant sequentially)')
     .option('--build <number>', 'versionCode override (manual strategy)', parseIntOption)
     .option('--version <name>', 'versionName override')
-    .action(async (project: string | undefined, opts: { platform: string; artifactType: string; build?: number; version?: string }) => {
+    .action(async (project: string | undefined, opts: { platform: string; artifactType: string; variant?: string; build?: number; version?: string }) => {
       const global = globals();
       if (opts.platform !== 'android') {
         throw new ValidationError(`Platform "${opts.platform}" is not supported yet`, {
@@ -22,18 +23,21 @@ export function buildCommand(globals: () => GlobalOptions): Command {
         });
       }
       const target = await resolveTarget(project, global.config, new JsonProjectRegistry());
-      const container = await createContainer({ cwd: target.cwd, configPath: target.configPath, envFiles: target.envFiles });
-      const summary = await renderEvents(
-        container.build.run({
-          cwd: target.cwd,
-          artifactType: opts.artifactType === 'aab' ? 'aab' : 'apk',
-          buildNumber: opts.build,
-          versionName: opts.version,
-          dryRun: global.dryRun,
-        }),
-        { json: global.json, verbose: global.verbose },
+      await runWithVariants(
+        { cwd: target.cwd, configPath: target.configPath, envFiles: target.envFiles },
+        opts.variant,
+        (container) =>
+          renderEvents(
+            container.build.run({
+              cwd: target.cwd,
+              artifactType: opts.artifactType === 'aab' ? 'aab' : 'apk',
+              buildNumber: opts.build,
+              versionName: opts.version,
+              dryRun: global.dryRun,
+            }),
+            { json: global.json, verbose: global.verbose },
+          ),
       );
-      if (summary.status === 'failed') process.exitCode = summary.error ? exitCodeOf(summary.error) : 1;
     });
 }
 
